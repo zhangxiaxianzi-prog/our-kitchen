@@ -48,3 +48,8 @@ next-env.d.ts
 # 本地检查密钥和类型检查缓存，不同步到网站源码。
 .dev.vars
 *.tsbuildinfo
+
+# 微信服务的依赖、编译结果和个人厨房备份不上传。
+/wechat-gateway/node_modules/
+/wechat-gateway/dist/
+*.厨房备份.json

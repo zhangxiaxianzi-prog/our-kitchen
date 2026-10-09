@@ -1,1 +1,22 @@
-{"name":"kitchen-wechat-gateway","version":"1.0.0","private":true,"description":"微信小程序连接现有两人厨房的服务","scripts":{"start":"node server.cjs","test":"node --test ../tests/wechat-gateway.test.cjs"},"engines":{"node":">=22"}}
+{
+  "name": "kitchen-wechat-gateway",
+  "version": "1.0.0",
+  "private": true,
+  "description": "网站和微信小程序共用的厨房与MySQL服务",
+  "scripts": {
+    "build": "node build.cjs",
+    "start": "node server.cjs",
+    "test": "npm run build && node --test ../tests/wechat-gateway.test.cjs",
+    "backup": "node tools/厨房备份迁移.cjs"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "mysql2": "3.24.5",
+    "zod": "3.25.76"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
+  }
+}

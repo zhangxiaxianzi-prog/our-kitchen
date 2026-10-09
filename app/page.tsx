@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import { CookingPot, Refrigerator, ShoppingBasket, BookOpen, ArrowRight, Plus, X, Shuffle, Check, Leaf, Beef, RefreshCw, Pencil, Trash2, ChevronDown, LogOut, LockKeyhole, Search, Utensils } from 'lucide-react';
+import { kitchenApi, kitchenTokenKey } from '../lib/kitchen-api';
 import type { Dish } from '../lib/menu';
 import type { Kitchen, Candidate } from '../lib/kitchen';
 type Payload = { role: 0 | 1; version: number; kitchen: Kitchen };
@@ -33,7 +34,7 @@ export default function Home() {
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // 登录钥匙留在当前手机，食材和评分每次从云端读取。
   useEffect(() => {
-    const key = localStorage.getItem('kitchen-key') || '';
+    const key = localStorage.getItem(kitchenTokenKey) || '';
     if (key) setToken(key);
     setReady(true);
   }, []);
@@ -43,7 +44,7 @@ export default function Home() {
     if (!token) return;
     let alive = true;
     const load = async () => {
-      try { const r = await fetch('/api/kitchen', { headers: { Authorization: 'Bearer ' + token }, cache: 'no-store' }); const p = await r.json() as Payload & {error?:string}; if (!alive) return; if (!r.ok) throw new Error(p.error); accept(p); setError(''); }
+      try { const r = await fetch(kitchenApi('/api/kitchen'), { headers: { Authorization: 'Bearer ' + token }, cache: 'no-store' }); const p = await r.json() as Payload & {error?:string}; if (!alive) return; if (!r.ok) throw new Error(p.error); accept(p); setError(''); }
       catch (e) { if (alive) setError(e instanceof Error ? e.message : '同步失败，请重试'); }
     };
     load(); const interval = setInterval(load, 8000);
@@ -53,11 +54,11 @@ export default function Home() {
   // 写入成功后才更新页面，失败保留用户原来的输入。
   async function action(input: Record<string, unknown>, success = ''): Promise<boolean> {
     if (busy) return false; setBusy(true);
-    try { const r = await fetch('/api/kitchen', { method: 'POST', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }, body: JSON.stringify(input) }); const p = await r.json() as Payload & {error?:string}; if (!r.ok) throw new Error(p.error); accept(p); if (success) notify(success); setError(''); return true; }
+    try { const r = await fetch(kitchenApi('/api/kitchen'), { method: 'POST', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }, body: JSON.stringify(input) }); const p = await r.json() as Payload & {error?:string}; if (!r.ok) throw new Error(p.error); accept(p); if (success) notify(success); setError(''); return true; }
     catch (e) { notify(e instanceof Error ? e.message : '保存失败，请重试'); return false; }
     finally { setBusy(false); }
   }
-  function logout() { localStorage.removeItem('kitchen-key'); setToken(''); setData(null); version.current = 0; setError(''); }
+  function logout() { localStorage.removeItem(kitchenTokenKey); setToken(''); setData(null); version.current = 0; setError(''); }
   function openEditor(d: Dish | 'new') { setEdit(d); setName(d === 'new' ? '' : d.name); setIngredients(d === 'new' ? '' : d.ingredients.join('、')); setKind(d === 'new' ? 'veg' : d.kind); }
   const k = data?.kitchen;
   const meal = k?.meals[0];
@@ -67,7 +68,7 @@ export default function Home() {
   const visible = k?.dishes.filter(d => (filter === 'hidden' ? !d.active : d.active) && (filter !== 'meat' || d.kind === 'meat') && (filter !== 'veg' || d.kind === 'veg') && (filter !== 'ready' || missing(d).length === 0) && (d.name.includes(search) || d.ingredients.some(i => i.includes(search)))) || [];
   const date = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', month: 'long', day: 'numeric', weekday: 'long' }).format(new Date());
   if (!ready) return <div className="loading">正在打开两人厨房…</div>;
-  if (!token) return <Login onLogin={key => { localStorage.setItem('kitchen-key', key); setToken(key); }} />;
+  if (!token) return <Login onLogin={key => { localStorage.setItem(kitchenTokenKey, key); setToken(key); }} />;
   if (!data) return <div className="entrance"><CookingPot size={42}/><h1>两人厨房</h1><p>{error || '正在读取你们的厨房…'}</p><button className="secondary" onClick={logout}>返回登录</button></div>;
   return <div className="app-shell">
     <aside className="sidebar"><div className="brand"><div className="brand-icon"><CookingPot size={24}/></div><div>两人厨房<small>把晚饭，一起决定</small></div></div><div className="nav-label">我们的一日三餐</div><nav>{navigation.map(n => <button key={n.id} onClick={() => { setTab(n.id); setSearch(''); setIngredient(''); }} className={tab === n.id ? 'nav-item selected' : 'nav-item'}><n.icon size={20}/><span>{n.name}</span>{tab === n.id && <span className="nav-dot"/>}</button>)}</nav><div className="sidebar-note"><Leaf size={22}/><p>先看看冰箱，<br/>再决定吃什么。</p><small>主要食材够不够分量，<br/>做饭前再确认一下。</small></div><div className="identity"><span className="avatar">{data.role === 0 ? '一' : '二'}</span><div>我的评分身份<small>{data.role === 0 ? '我' : '女朋友'}</small></div><button title="退出登录" className="icon-button" onClick={logout}><LogOut size={17}/></button></div></aside>
@@ -100,7 +101,7 @@ function Login({onLogin}:{onLogin:(key:string)=>void}) {
   // 两个人输入同一口令即可共享；换身份需要重新登录，服务器会重新签发身份票据。
   async function login(e: React.FormEvent) {
     e.preventDefault(); if(busy)return; setBusy(true);setError('');
-    try {const response=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({passphrase,role})});const result=await response.json() as {token:string;error?:string};if(!response.ok)throw new Error(result.error);setPassphrase('');onLogin(result.token);}
+    try {const response=await fetch(kitchenApi('/api/login'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({passphrase,role})});const result=await response.json() as {token:string;error?:string};if(!response.ok)throw new Error(result.error);setPassphrase('');onLogin(result.token);}
     catch(e){setError(e instanceof Error?e.message:'登录失败，请重试');}finally{setBusy(false);}
   }
   return <div className="login-page"><div className="login-brand"><CookingPot size={24}/>两人厨房</div><div className="login-layout"><section className="login-intro"><p className="eyebrow">一张菜单，两个人的晚餐</p><h1>少一点纠结，<br/>一起吃顿好饭。</h1><p>冰箱里有什么，今晚想吃什么。<br/>把两个人的想法，放到同一张餐桌上。</p><div className="login-points"><span><Refrigerator size={18}/>共享冰箱</span><span><CookingPot size={18}/>一起评分</span><span><ShoppingBasket size={18}/>买菜清单</span></div></section><section className="login-card"><div className="brand-icon"><LockKeyhole size={25}/></div><h2>进入我们的厨房</h2><p>约定一个共同口令，两个人输入完全相同的口令，就会进入同一个厨房。</p><form onSubmit={login}><label className="field">共同口令<input required minLength={8} maxLength={64} value={passphrase} onChange={e=>setPassphrase(e.target.value)} type="password" autoComplete="current-password" placeholder="8到64个字符，区分大小写"/></label><label className="field">这次以谁的身份进入</label><div className="role-select"><button type="button" className={role===0?'active':''} onClick={()=>setRole(0)}>男生</button><button type="button" className={role===1?'active':''} onClick={()=>setRole(1)}>女生</button></div>{error&&<p className="error-banner" role="alert">{error}</p>}<button className="primary full" disabled={busy}>{busy?'正在进入…':'创建 / 进入厨房'}<ArrowRight size={17}/></button></form><small>第一次使用会创建厨房。输错口令会进入不同厨房，请先核对口令。知道口令的人可以选择任一身份，请保管好口令。手机会记住登录30天。</small></section></div></div>;
