@@ -1,0 +1,19 @@
+{
+  "appid": "wxd3ad251e8ea72453",
+  "projectname": "两人厨房",
+  "description": "网站与微信小程序共享同一个厨房",
+  "compileType": "miniprogram",
+  "miniprogramRoot": "miniprogram/",
+  "setting": {
+    "es6": true,
+    "enhance": true,
+    "postcss": true,
+    "minified": true,
+    "urlCheck": true,
+    "minifyWXML": true,
+    "minifyWXSS": true
+  },
+  "packOptions": {
+    "ignore": []
+  }
+}

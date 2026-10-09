@@ -1,0 +1,15 @@
+{
+  "pages": [
+    "pages/kitchen/index"
+  ],
+  "window": {
+    "navigationBarTitleText": "两人厨房",
+    "navigationBarBackgroundColor": "#f7f5ef",
+    "navigationBarTextStyle": "black",
+    "backgroundColor": "#f7f5ef",
+    "enablePullDownRefresh": true
+  },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json",
+  "lazyCodeLoading": "requiredComponents"
+}

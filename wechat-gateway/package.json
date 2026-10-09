@@ -1,0 +1,1 @@
+{"name":"kitchen-wechat-gateway","version":"1.0.0","private":true,"description":"微信小程序连接现有两人厨房的服务","scripts":{"start":"node server.cjs","test":"node --test ../tests/wechat-gateway.test.cjs"},"engines":{"node":">=22"}}

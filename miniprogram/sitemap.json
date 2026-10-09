@@ -1,0 +1,1 @@
+{"desc":"厨房数据需要口令登录，不提供搜索索引","rules":[{"action":"disallow","page":"*"}]}
