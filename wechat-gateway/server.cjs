@@ -21,11 +21,12 @@ function forward(request, body, requestUpstream = https.request) {
   return new Promise((resolve, reject) => {
     const started = Date.now();
     let responseStatus = null; let responseType = '未收到响应';
+    let responseServer = '未知'; let responseTrace = ''; let responsePage = '未知'; let responseErrorCode = '';
     // 保留Node提供的错误编号，但不记录原异常文字，避免网址或票据混入日志。
     const fail = (reason, stage, source, fallbackCode) => {
       const code = source && typeof source.code === 'string' && /^[A-Z0-9_]{1,64}$/.test(source.code) ? source.code : fallbackCode;
       const error = new Error(reason, source ? { cause: source } : undefined);
-      error.diagnostic = { 阶段: stage, 原因: reason, 错误编号: code, 耗时毫秒: Date.now() - started, 网站状态: responseStatus, 内容类型: responseType };
+      error.diagnostic = { 阶段: stage, 原因: reason, 错误编号: code, 耗时毫秒: Date.now() - started, 网站状态: responseStatus, 内容类型: responseType, 响应服务: responseServer, 网站请求编号: responseTrace, 错误页类别: responsePage, 网站错误编号: responseErrorCode };
       reject(error);
     };
     const headers = { 'Content-Type': 'application/json', Accept: 'application/json', Origin: SITE_ORIGIN };
@@ -33,6 +34,12 @@ function forward(request, body, requestUpstream = https.request) {
     if (request.headers.authorization) headers.Authorization = request.headers.authorization;
     const upstream = requestUpstream(SITE_ORIGIN + request.url, { method: request.method, headers, timeout: 12000 }, response => {
       responseStatus = response.statusCode;
+      // 请求编号用于请网站平台查询拒绝规则；只接受固定格式，不记录Cookie或任意响应头。
+      const ray = String(response.headers['cf-ray'] || '');
+      responseTrace = /^[a-f0-9]{8,32}-[A-Z]{3}$/.test(ray) ? ray : '';
+      const serverName = String(response.headers.server || '').toLowerCase();
+      responseServer = ['cloudflare', 'nginx', 'envoy'].includes(serverName) ? serverName : '未知';
+      const challenged = response.headers['cf-mitigated'] === 'challenge';
       // 只留下内容类型本身，不记录响应正文或其他响应头。
       const type = String(response.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
       responseType = /^[a-z0-9.+-]+\/[a-z0-9.+-]+$/.test(type) ? type : '未知内容类型';
@@ -45,7 +52,16 @@ function forward(request, body, requestUpstream = https.request) {
       response.on('error', error => fail('读取厨房响应失败', '读取网站响应', error, 'UPSTREAM_READ_ERROR'));
       response.on('end', () => {
         const text = Buffer.concat(chunks).toString('utf8');
-        try { JSON.parse(text); } catch (_) { fail('厨房返回的内容不是JSON', '解析网站响应', null, 'UPSTREAM_INVALID_JSON'); return; }
+        try { JSON.parse(text); } catch (_) {
+          // 只识别常见拒绝页的固定标识，不输出HTML正文，也不尝试绕过验证。
+          const errorCode = text.match(/(?:error code\s*:?\s*|cf-error-code[^>]*>\s*)([0-9]{4,5})/i);
+          responseErrorCode = errorCode ? errorCode[1] : '';
+          if (challenged || /challenge-platform|cf-chl-|just a moment/i.test(text)) responsePage = 'Cloudflare浏览器验证页';
+          else if (/cloudflare/i.test(text) && /you have been blocked|access denied|forbidden|cf-error-code/i.test(text)) responsePage = 'Cloudflare拒绝页';
+          else if (/access denied|forbidden/i.test(text)) responsePage = '访问被拒绝页';
+          else responsePage = '无法识别的非JSON页面';
+          fail('厨房返回的内容不是JSON', '解析网站响应', null, 'UPSTREAM_INVALID_JSON'); return;
+        }
         resolve({ status: response.statusCode, body: text });
       });
     });

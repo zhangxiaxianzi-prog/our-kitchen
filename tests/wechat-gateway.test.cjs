@@ -88,3 +88,26 @@ test('容器日志能定位错误，且不打印口令、票据或任意异常�
     assert(!JSON.stringify(await result.json()).includes('ENOTFOUND'));
   } finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
 });
+
+// 拒绝页只提取固定标识及请求编号，不把错误页中的口令或正文写入容器日志。
+test('403拒绝页保留平台请求编号和错误码，不记录原文', async () => {
+  const response = new EventEmitter(); response.statusCode = 403;
+  response.headers = { 'content-type': 'text/html', server: 'cloudflare', 'cf-ray': 'abcdef1234567890-SIN', 'set-cookie': 'private-cookie' };
+  const send = simulatedRequest((_upstream, callback) => { callback(response); response.emit('data', Buffer.from('<html>Cloudflare Access denied <span class="cf-error-code">1020</span> private-page-value</html>')); response.emit('end'); });
+  await assert.rejects(forward({ url: '/api/login', method: 'POST', headers: {} }, '{}', send), error => {
+    const details = error.diagnostic;
+    assert.equal(details.响应服务, 'cloudflare'); assert.equal(details.网站请求编号, 'abcdef1234567890-SIN');
+    assert.equal(details.错误页类别, 'Cloudflare拒绝页'); assert.equal(details.网站错误编号, '1020');
+    assert(!JSON.stringify(details).includes('private-')); return true;
+  });
+});
+test('识别浏览器验证页，未知或含任意文本的响应头不进入日志', async () => {
+  const response = new EventEmitter(); response.statusCode = 403;
+  response.headers = { 'content-type': 'text/html', 'cf-mitigated': 'challenge', server: 'private-server-value', 'cf-ray': 'private-ray-value' };
+  const send = simulatedRequest((_upstream, callback) => { callback(response); response.emit('data', Buffer.from('private-page-value')); response.emit('end'); });
+  await assert.rejects(forward({ url: '/api/login', method: 'POST', headers: {} }, '{}', send), error => {
+    const details = error.diagnostic;
+    assert.equal(details.错误页类别, 'Cloudflare浏览器验证页'); assert.equal(details.响应服务, '未知'); assert.equal(details.网站请求编号, '');
+    assert(!JSON.stringify(details).includes('private-')); return true;
+  });
+});
