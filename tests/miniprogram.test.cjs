@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const { candidateView } = require('../miniprogram/utils/view');
-test('小程序评分显示与网站一致：未评分等待，7分入选，6分不入选', () => {
+test('小程序评分显示：未评分等待，7分入选，6分不入选', () => {
   const candidate = { id: 'c', dish: { ingredients: ['番茄', '鸡蛋'] }, scores: [2, null] };
   assert.equal(candidateView(candidate, 0, []).verdict, '等待评分');
   candidate.scores = [2, 5]; assert.equal(candidateView(candidate, 1, ['番茄', '鸡蛋']).verdict, '已入选');
@@ -27,7 +27,7 @@ test('旧响应不覆盖新数据，退出后旧响应不能重新登录，后�
   const mock = { getStorageSync: () => '', removeStorageSync() {}, showToast() {} };
   const code = fs.readFileSync(require.resolve('../miniprogram/pages/kitchen/index.js'), 'utf8');
   const timeout = () => 100; const cleared = [];
-  vm.runInNewContext(code, { Page: page => { definition = page; }, require: path => path.includes('/api') ? { clearToken() {} } : require('../miniprogram/utils/' + (path.includes('ingredients') ? 'ingredients' : path.includes('swipe') ? 'swipe' : 'view')), wx: mock, setTimeout: timeout, clearTimeout: timer => cleared.push(timer), console });
+  vm.runInNewContext(code, { Page: page => { definition = page; }, require: path => path.includes('/api') ? { clearToken() {} } : require('../miniprogram/utils/' + (path.includes('ingredients') ? 'ingredients' : path.includes('swipe') ? 'swipe' : path.includes('calendar') ? 'calendar' : 'view')), wx: mock, setTimeout: timeout, clearTimeout: timer => cleared.push(timer), console });
   const page = Object.assign({}, definition, { data: structuredClone(definition.data), setData(patch) { Object.assign(this.data, patch); } });
   page.onLoad();
   const kitchen = { dishes: [], pantry: ['排骨'], shopping: [], meals: [] };
@@ -41,7 +41,7 @@ test('手机键盘不重复抬弹窗，收起后恢复高度，卸载后不更�
   let definition; let height = 600; const hidden = [];
   const wx = { getWindowInfo: () => ({ windowHeight: height, windowWidth: 375 }), hideKeyboard: () => hidden.push(true) };
   const code = fs.readFileSync(require.resolve('../miniprogram/pages/kitchen/index.js'), 'utf8');
-  vm.runInNewContext(code, { Page: page => { definition = page; }, require: path => path.includes('/api') ? {} : require('../miniprogram/utils/' + (path.includes('ingredients') ? 'ingredients' : path.includes('swipe') ? 'swipe' : 'view')), wx, setTimeout, clearTimeout, console });
+  vm.runInNewContext(code, { Page: page => { definition = page; }, require: path => path.includes('/api') ? {} : require('../miniprogram/utils/' + (path.includes('ingredients') ? 'ingredients' : path.includes('swipe') ? 'swipe' : path.includes('calendar') ? 'calendar' : 'view')), wx, setTimeout, clearTimeout, console });
   const page = Object.assign({}, definition, { data: structuredClone(definition.data), setData(patch, callback) { Object.assign(this.data, patch); if (callback) callback(); } });
   page.onLoad(); page.data.editorOpen = true; page._focusedField = 'draft-ingredients-field';
   page.onKeyboardChange({ detail: { height: 300 } });
@@ -70,7 +70,7 @@ test('冰箱分类搜索、跨类多选、共享刷新和失败后草稿保留',
   assert.equal(ingredients.categoryOf('未知食材'), 'other');
   let definition; let failed = false; const calls = [];
   const api = { change: async input => { calls.push(input); if (failed) throw new Error('厨房请求失败'); return { version: 2, role: 0, kitchen: { dishes: [], pantry: ['番茄', '鸡蛋', '秋葵'], pantryCategories: [{ name: '秋葵', category: 'vegetables' }], shopping: [], meals: [] } }; } };
-  vm.runInNewContext(fs.readFileSync(require.resolve('../miniprogram/pages/kitchen/index.js'), 'utf8'), { Page: page => { definition = page; }, require: path => path.includes('/api') ? api : require('../miniprogram/utils/' + (path.includes('ingredients') ? 'ingredients' : path.includes('swipe') ? 'swipe' : 'view')), wx: { hideKeyboard() {}, showToast() {} }, setTimeout, clearTimeout });
+  vm.runInNewContext(fs.readFileSync(require.resolve('../miniprogram/pages/kitchen/index.js'), 'utf8'), { Page: page => { definition = page; }, require: path => path.includes('/api') ? api : require('../miniprogram/utils/' + (path.includes('ingredients') ? 'ingredients' : path.includes('swipe') ? 'swipe' : path.includes('calendar') ? 'calendar' : 'view')), wx: { hideKeyboard() {}, showToast() {} }, setTimeout, clearTimeout });
   const page = Object.assign({}, definition, { data: structuredClone(definition.data), setData(patch, cb) { Object.assign(this.data, patch); if (cb) cb(); } });
   page.onLoad(); page.accept({ version: 1, role: 0, kitchen: { dishes: [], pantry: [], shopping: [], meals: [] } }, 0);
   page.openPantryAdd(); page.toggleAddItem({ currentTarget: { dataset: { name: '番茄' } } });
@@ -129,46 +129,28 @@ test('数量草稿不改本轮，刷新不覆盖草稿，下次创建使用新�
   await page.createMeal(); assert.equal(calls[0].meatCount, 2); assert.equal(calls[0].vegCount, 2);
   page.data.meatCount = 0; page.data.vegCount = 0; await page.createMeal(); assert.equal(calls.length, 1);
 });
-// 同一份纯显示规则用于网站和小程序；不能凭历史记录推断实际已经吃过。
-test('历史卡片状态、菜名搜索、独立评分、失效提示和淘汰分批展示', () => {
-  const { historyViews } = require('../miniprogram/utils/view');
-  const dish = { id: 'd', name: '历史菜名', kind: 'meat', ingredients: ['历史食材'], active: true };
-  const meal = { id: 'past', date: '旧日期', candidates: [{ id: 'c', dish, scores: [2, 5] }], rejected: Array.from({ length: 21 }, (_, i) => ({ id: 'r' + i, name: '淘汰菜' + i, scores: [1, 2] })) };
-  const menu = [{ ...dish, name: '当前菜名', ingredients: ['当前食材'] }];
-  let view = historyViews([meal], 0, menu)[0];
-  assert.equal(view.status, '全部入选'); assert.equal(view.preview, '历史菜名'); assert.equal(view.rows.length, 0); assert.equal(view.rejected.length, 0); assert.equal(view.repeatNames, '当前菜名');
-  view = historyViews([meal], 0, menu, '淘汰菜20', 'past', 'past')[0];
-  assert.equal(view.rows[0].ingredientsText, '历史食材'); assert.equal(view.rows[0].boyText, '2 分'); assert.equal(view.rows[0].girlText, '5 分');
-  assert.equal(view.rejected.length, 10); assert.equal(view.rejectedCount, 21); assert.equal(view.hasMoreRejected, true);
-  assert.equal(historyViews([meal], 0, menu, '', 'past', 'past', 30)[0].hasMoreRejected, false);
-  assert.equal(historyViews([meal], 0, menu, '不存在').length, 0);
-  assert.match(historyViews([meal], 0, [], '', 'past')[0].repeatReason, /已删除/);
-  const pending = { ...meal, id: 'pending', candidates: [{ id: 'c2', dish, scores: [null, null], partnerRated: true }] };
-  view = historyViews([pending], 0, menu, '', 'pending')[0];
-  assert.equal(view.status, '未完成评分'); assert.equal(view.rows[0].girlText, '已评分，暂不公开'); assert.equal(view.canRepeat, false);
-  view = historyViews([{ ...meal, candidates: [...meal.candidates, pending.candidates[0]] }], 0, menu)[0];
-  assert.equal(view.status, '部分入选'); assert.equal(view.pendingCount, 1);
-  view = historyViews([{ ...meal, fridgeOnly: true }], 0, menu)[0]; assert.match(view.repeatReason, /缺少食材/);
-  assert.equal(historyViews([{ ...meal, fridgeOnly: true }], 0, menu, '', '', '', 10, ['当前食材'])[0].canRepeat, true);
+
+// 日历使用真实日期边界，闰年、跨年和空日期不靠手机所在时区猜。
+test('月历七列、闰年和跨年正确，旧食材缺失明确显示，淘汰菜分开展示', () => {
+  const calendar = require('../miniprogram/utils/calendar');
+  const cells = calendar.monthCells('2024-02', [{ date: '2024-02-29', count: 2 }], '2024-02-29');
+  assert.equal(cells.filter(x => x.date).length, 29); assert.equal(cells.length % 7, 0); assert.equal(cells.find(x => x.selected).count, 2);
+  assert.equal(calendar.shiftMonth('2026-12', 1), '2027-01'); assert.equal(calendar.shiftMonth('2026-01', -1), '2025-12');
+  const groups = calendar.entryGroups([{ id: '1', mealId: 'm', rank: 1, dateLabel: '2026/10/10', record: { name: '旧菜', kind: 'veg', ingredients: null, scores: [1, 2], passed: false } }], ['m']);
+  assert.equal(groups[0].dishes.length, 0); assert.equal(groups[0].rejectedOpen, true); assert.equal(groups[0].rejected[0].ingredientsText, '旧记录未保存食材');
 });
-test('历史搜索展开保留在刷新后，取消和保存失败不开始新轮，成功复用后返回当前晚餐', async () => {
-  let definition; let confirm = false; let fail = false; const calls = []; const scrolls = [];
-  const dish = { id: 'd', name: '入选菜', kind: 'meat', ingredients: ['排骨'], active: true };
-  const past = { id: 'past', date: '旧日期', candidates: [{ id: 'c', dish, scores: [5, 5] }] };
-  const current = { id: 'now', date: '当前日期', candidates: [{ id: 'n', dish, scores: [null, null] }] };
-  const kitchen = { dishes: [dish], pantry: [], shopping: [], meals: [current, past] };
-  const newKitchen = { ...kitchen, mealPreferences: { meatCount: 1, vegCount: 0 }, meals: [{ ...current, id: 'repeat', candidates: [{ id: 'new', dish, scores: [null, null] }] }, ...kitchen.meals] };
-  const api = { change: async input => { calls.push(input); if (fail) throw new Error('厨房保存失败'); return { version: 3, role: 0, kitchen: newKitchen }; } };
-  vm.runInNewContext(fs.readFileSync(require.resolve('../miniprogram/pages/kitchen/index.js'), 'utf8'), { Page: p => { definition = p; }, require: path => path.includes('/api') ? api : require('../miniprogram/utils/' + path.split('/').pop()), wx: { showToast() {}, pageScrollTo: options => scrolls.push(options) }, setTimeout, clearTimeout });
-  const page = Object.assign({}, definition, { data: structuredClone(definition.data), setData(patch) { Object.assign(this.data, patch); }, confirm: async () => confirm });
-  page.onLoad(); page.accept({ version: 1, role: 0, kitchen }, 0); page.toggleHistory();
-  const event = { currentTarget: { dataset: { id: 'past' } } };
-  page.toggleHistoryDetail(event); page.onHistorySearch({ detail: { value: '入选菜' } });
-  page.accept({ version: 2, role: 0, kitchen }, 0); assert.equal(page.data.history[0].expanded, true); assert.equal(page.data.historySearch, '入选菜');
-  await page.repeatHistory(event); assert.equal(calls.length, 0);
-  confirm = true; fail = true; await page.repeatHistory(event); assert.equal(page.data.showHistory, true); assert.equal(page.data.meal.id, 'now');
-  // 保存失败后先同步厨房，确认当前记录再允许重试。
-  page.accept({ version: 2, role: 0, kitchen }, 0);
-  fail = false; await page.repeatHistory(event); assert.equal(calls[1].action, 'mealRepeat'); assert.equal(calls[1].mealId, 'past');
-  assert.equal(page.data.showHistory, false); assert.equal(page.data.meal.id, 'repeat'); assert.equal(page.data.meatCount, 1); assert.equal(page.data.vegCount, 0); assert.equal(scrolls.length, 1);
+test('日历切月份、退出和请求失败不会覆盖新日期或冰箱，分页只保留当前页', async () => {
+  let definition; const pending = []; let fail = false;
+  const api = { token: () => 'test-token', clearToken() {}, calendar: query => fail ? Promise.reject(new Error('模拟日历故障')) : new Promise(resolve => pending.push({ query, resolve })) };
+  vm.runInNewContext(fs.readFileSync(require.resolve('../miniprogram/pages/kitchen/index.js'), 'utf8'), { Page: p => { definition = p; }, require: path => path.includes('/api') ? api : require('../miniprogram/utils/' + path.split('/').pop()), wx: { showToast() {} }, setTimeout, clearTimeout });
+  const page = Object.assign({}, definition, { data: structuredClone(definition.data), setData(patch) { Object.assign(this.data, patch); } }); page.onLoad(); page.data.tab = 'calendar'; page.data.pantry = ['鸡蛋'];
+  const first = page.loadCalendar(); page.changeCalendarMonth({ currentTarget: { dataset: { offset: 1 } } }); const month = page.data.calendarMonth;
+  pending[0].resolve({ days: [{ date: '1900-01-01', count: 2 }], unknownCount: 9 }); await first; assert.equal(page.data.unknownCount, 0);
+  pending[1].resolve({ days: [{ date: month + '-01', count: 2 }], unknownCount: 0 }); await new Promise(resolve => setImmediate(resolve));
+  const entry = { id: '1', mealId: 'm', rank: 1, dateLabel: month + '-01', record: { name: '菜', kind: 'veg', ingredients: ['鸡蛋'], scores: [4, 4], passed: true } };
+  pending[2].resolve({ entries: [entry], next: { rank: 1, id: '1' } }); await new Promise(resolve => setImmediate(resolve)); assert.equal(page.data.calendarEntries.length, 1);
+  page.calendarNextPage(); pending[3].resolve({ days: [], unknownCount: 0 }); await new Promise(resolve => setImmediate(resolve)); pending[4].resolve({ entries: [{ ...entry, id: '2' }], next: null }); await new Promise(resolve => setImmediate(resolve)); assert.equal(page.data.calendarPage, 2); assert.equal(page.data.calendarEntries.length, 1); assert.equal(page.data.calendarEntries[0].id, '2');
+  page.calendarPreviousPage(); assert.equal(pending[5].query.month, month); pending[5].resolve({ days: [], unknownCount: 0 }); await new Promise(resolve => setImmediate(resolve)); assert.equal(pending[6].query.cursor, undefined); pending[6].resolve({ entries: [entry], next: null }); await new Promise(resolve => setImmediate(resolve)); assert.equal(page.data.calendarPage, 1);
+  fail = true; await page.loadCalendar(); assert.match(page.data.calendarError, /日历故障/); assert.equal(page.data.pantry[0], '鸡蛋');
+  fail = false; const late = page.loadCalendar(); page.clearSession(); pending[7].resolve({ days: [], unknownCount: 99 }); await late; assert.equal(page.data.unknownCount, 0); assert.equal(page.data.loggedIn, false);
 });

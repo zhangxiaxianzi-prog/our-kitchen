@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
-import {newKitchen,applyAction} from '../lib/kitchen';
-import {initialMenu,ingredientName} from '../lib/menu';
+import {newKitchen,applyAction} from '../wechat-gateway/domain/kitchen';
+import {initialMenu,ingredientName} from '../wechat-gateway/domain/menu';
 const k=newKitchen();assert.equal(k.pantry.length,0);assert.equal(new Set(k.dishes.map(d=>d.name)).size,k.dishes.length);
 assert.equal(k.dishes.find(d=>d.name==='油豆腐烧肉')!.kind,'meat');assert.equal(ingredientName('西红柿'),'番茄');
 applyAction(k,{action:'mealCreate'},0);const meal=k.meals[0];assert.equal(meal.candidates.filter(c=>c.dish.kind==='meat').length,1);assert.equal(meal.candidates.filter(c=>c.dish.kind==='veg').length,2);

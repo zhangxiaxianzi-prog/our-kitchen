@@ -1,14 +1,16 @@
 const api = require('../../utils/api');
-const { candidateView, dishView, historyViews } = require('../../utils/view');
+const { candidateView, dishView } = require('../../utils/view');
+const calendar = require('../../utils/calendar');
 const ingredients = require('../../utils/ingredients');
 const { swipeDirection } = require('../../utils/swipe');
-// 当前页面统一管理四个入口，实际修改都发给同一个厨房接口。
+// 当前页面统一管理五个入口，实际修改都发给同一个厨房接口。
 Page({
   data: {
     loggedIn: false, loginRole: 0, role: 0, roleName: '男生', passphrase: '', busy: false, error: '', synced: false,
-    tab: 'dinner', tabs: [{ id: 'dinner', label: '今晚吃什么' }, { id: 'fridge', label: '冰箱' }, { id: 'shopping', label: '采购清单' }, { id: 'menu', label: '菜单' }],
+    tab: 'dinner', tabs: [{ id: 'dinner', label: '今晚吃什么' }, { id: 'fridge', label: '冰箱' }, { id: 'shopping', label: '采购清单' }, { id: 'menu', label: '菜单' }, { id: 'calendar', label: '三餐日历' }],
     scores: [0, 1, 2, 3, 4, 5], pantry: [], shopping: [], boughtCount: 0, dishes: [], visibleDishes: [], suggestions: [],
-    meal: null, candidates: [], rejectedRows: [], passedCount: 0, countOptions: [0, 1, 2, 3, 4, 5, 6], meatCount: 1, vegCount: 2, mealCount: 3, history: [], historyCount: 0, historySearch: '', historyExpandedId: '', historyRejectedId: '', historyRejectedLimit: 10, showHistory: false, fridgeOnly: false,
+    meal: null, candidates: [], rejectedRows: [], passedCount: 0, countOptions: [0, 1, 2, 3, 4, 5, 6], meatCount: 1, vegCount: 2, mealCount: 3,  fridgeOnly: false,
+    calendarMonth: '', calendarDate: '', calendarCells: [], calendarMarks: [], calendarGroups: [], calendarEntries: [], calendarNext: null, calendarPages: [], calendarPage: 1, calendarLoading: false, calendarError: '', unknownCount: 0, calendarRejected: [], weekdays: ['一', '二', '三', '四', '五', '六', '日'],
     ingredient: '', search: '', filter: 'active', filters: [{ id: 'active', label: '全部推荐' }, { id: 'meat', label: '荤菜' }, { id: 'veg', label: '素菜' }, { id: 'ready', label: '食材已齐' }, { id: 'hidden', label: '不再推荐' }],
     editorOpen: false, draftId: '', draftName: '', draftIngredients: '', draftKind: 'veg',
     ingredientCategories: ingredients.categories, customCategories: ingredients.categories.slice(1),
@@ -18,15 +20,15 @@ Page({
     keyboardHeight: 0, sheetHeight: 500, sheetBottom: 0, sheetTarget: '',
     pickOpen: false, pickItems: [], pickCandidateId: '', pickMealId: '', pickKind: '', pickSearch: ''
   },
-  onLoad() { this._version = 0; this._sessionEpoch = 0; this._visible = false; this._unloaded = false; this.updateSheetSize(0); },
+  onLoad() { this._version = 0; this._sessionEpoch = 0; this._visible = false; this._unloaded = false; this._calendarRequest = 0; this.setData({ calendarMonth: calendar.today().slice(0, 7), calendarDate: calendar.today() }); this.paintCalendar(); this.updateSheetSize(0); },
   onShow() {
-    this._visible = true;
+    this._visible = true; if (this.data.tab === 'calendar') { this.setData({ calendarLoading: false }); this.loadCalendar(this._calendarCursor || null, this.data.calendarPage, this.data.calendarPages); }
     this.updateSheetSize(0);
     if (api.token()) { this.setData({ loggedIn: true }); this.refresh(); }
     this.scheduleRefresh();
   },
-  onHide() { this._visible = false; clearTimeout(this._timer); },
-  onUnload() { this._visible = false; this._unloaded = true; clearTimeout(this._timer); },
+  onHide() { this._calendarRequest++; this._visible = false; clearTimeout(this._timer); },
+  onUnload() { this._calendarRequest++; this._visible = false; this._unloaded = true; clearTimeout(this._timer); },
   async onPullDownRefresh() { try { if (api.token()) await this.refresh(); } finally { wx.stopPullDownRefresh(); } },
   // 微信输入组件提供键盘高度；不再让系统抬页面和自定义弹窗同时抬两次。
   onKeyboardChange(e) { this.updateSheetSize(Number(e.detail.height) || 0); },
@@ -71,6 +73,7 @@ Page({
   accept(payload, epoch) {
     if (this._unloaded || epoch !== this._sessionEpoch || payload.version < this._version) return;
     if (!payload.kitchen || ![0, 1].includes(payload.role) || !Number.isInteger(payload.version)) throw new Error('厨房数据不完整，请刷新');
+    const changed = payload.version !== this._version;
     this._version = payload.version;
     this._kitchen = payload.kitchen;
     const kitchen = payload.kitchen;
@@ -79,8 +82,8 @@ Page({
     const rejectedRows = (meal && meal.rejected || []).map(c => ({ id: c.id, name: c.name, boyScore: c.scores[0], girlScore: c.scores[1], total: c.scores[0] + c.scores[1] }));
     if (!this._mealDraftDirty) { const counts = kitchen.mealPreferences || { meatCount: 1, vegCount: 2 }; this.setData({ meatCount: counts.meatCount, vegCount: counts.vegCount }); }
     this.setData({ loggedIn: true, role: payload.role, roleName: payload.role === 0 ? '男生' : '女生', pantry: kitchen.pantry, shopping: kitchen.shopping, boughtCount: kitchen.shopping.filter(x => x.checked).length,
-      meal, candidates, rejectedRows, mealCount: meal ? meal.candidates.length : this.data.meatCount + this.data.vegCount, passedCount: candidates.filter(c => c.passed).length, historyCount: kitchen.meals.length - (meal ? 1 : 0), dishes: kitchen.dishes.map(d => dishView(d, kitchen.pantry)), error: '', synced: true });
-    this.filterDishes(); this.filterHistory();
+      meal, candidates, rejectedRows, mealCount: meal ? meal.candidates.length : this.data.meatCount + this.data.vegCount, passedCount: candidates.filter(c => c.passed).length, dishes: kitchen.dishes.map(d => dishView(d, kitchen.pantry)), error: '', synced: true });
+    this.filterDishes(); if (changed && this.data.tab === 'calendar') this.loadCalendar(this._calendarCursor || null, this.data.calendarPage, this.data.calendarPages);
   },
   async refresh() {
     if (this._reading || !api.token()) return;
@@ -113,12 +116,12 @@ Page({
     finally { if (!this._unloaded) this.setData({ busy: false }); }
   },
   clearSession() {
-    this._mealDraftDirty = false; this._pantryGesture = null;
+    this._calendarRequest++; this._mealDraftDirty = false; this._pantryGesture = null;
     api.clearToken(); this._sessionEpoch++; this._version = 0; this._kitchen = null;
-    this.setData({ loggedIn: false, synced: false, pantryOpen: false, pantryManaging: false, pantrySelected: [], addSelected: [], customName: '', pantrySearch: '', pantrySwipeName: '', meatCount: 1, vegCount: 2, mealCount: 3, rejectedRows: [], meal: null, candidates: [], pantry: [], shopping: [], dishes: [], visibleDishes: [], history: [], historyCount: 0, historySearch: '', historyExpandedId: '', historyRejectedId: '', historyRejectedLimit: 10, showHistory: false, editorOpen: false, pickOpen: false, passphrase: '' });
+    this.setData({ loggedIn: false, synced: false, pantryOpen: false, pantryManaging: false, pantrySelected: [], addSelected: [], customName: '', pantrySearch: '', pantrySwipeName: '', meatCount: 1, vegCount: 2, mealCount: 3, rejectedRows: [], meal: null, candidates: [], pantry: [], shopping: [], dishes: [], visibleDishes: [],  calendarEntries: [], calendarGroups: [], calendarMarks: [], calendarError: '', calendarLoading: false, calendarNext: null, calendarPages: [], calendarPage: 1, calendarRejected: [], unknownCount: 0, calendarDate: calendar.today(), calendarMonth: calendar.today().slice(0, 7), editorOpen: false, pickOpen: false, passphrase: '' }); this.paintCalendar();
   },
   logout() { if (!this.data.busy) { this.clearSession(); this.setData({ error: '' }); } },
-  selectTab(e) { this.setData({ tab: e.currentTarget.dataset.tab, ingredient: '', pantrySwipeName: '' }); },
+  selectTab(e) { this._calendarRequest++; this.setData({ tab: e.currentTarget.dataset.tab, ingredient: '', pantrySwipeName: '', calendarLoading: false }); if (this.data.tab === 'calendar') this.loadCalendar(); },
   // 数量是下一轮的选择，刷新和本轮评分不会清掉用户正在调整的数字。
   onMealCount(e) {
     if (this.data.busy) return;
@@ -143,41 +146,42 @@ Page({
   },
   async replace(e) { if (this.data.meal) await this.mutate({ action: 'replace', mealId: this.data.meal.id, candidateId: e.currentTarget.dataset.id, fridge: this.data.fridgeOnly }, '已换菜，请重新评分'); },
   async shoppingGenerate() { if (await this.mutate({ action: 'shoppingGenerate' }, '采购清单已更新')) this.setData({ tab: 'shopping' }); },
-  toggleHistory() { this.setData({ showHistory: !this.data.showHistory }); },
-  // 搜索和展开只影响历史显示，不会修改旧晚餐的候选、评分或淘汰记录。
-  filterHistory() {
-    if (!this._kitchen) return;
-    this.setData({ history: historyViews(this._kitchen.meals.slice(1), this.data.role, this._kitchen.dishes, this.data.historySearch, this.data.historyExpandedId, this.data.historyRejectedId, this.data.historyRejectedLimit, this._kitchen.pantry) });
+  // 月份标记和选中日期都只影响日历，不修改评分或菜单。
+  paintCalendar() { this.setData({ calendarCells: calendar.monthCells(this.data.calendarMonth, this.data.calendarMarks, this.data.calendarDate), calendarGroups: calendar.entryGroups(this.data.calendarEntries, this.data.calendarRejected) }); },
+  // 请求带本次页面编号；切月份、切日期或退出后，迟到的响应直接丢弃。
+  async loadCalendar(cursor = null, page = 1, pages = []) {
+    if (this._unloaded || this.data.tab !== 'calendar' || !api.token()) return;
+    this._calendarCursor = cursor;
+    const request = ++this._calendarRequest; const epoch = this._sessionEpoch;
+    const month = this.data.calendarMonth; const date = this.data.calendarDate;
+    this.setData({ calendarLoading: true, calendarError: '', calendarRejected: [] });
+    const valid = () => !this._unloaded && request === this._calendarRequest && epoch === this._sessionEpoch && this.data.tab === 'calendar';
+    try {
+      const marks = await api.calendar({ month }); if (!valid()) return;
+      this.setData({ calendarMarks: marks.days, unknownCount: marks.unknownCount }); this.paintCalendar();
+      const result = await api.calendar({ date, cursor: cursor || undefined }); if (!valid()) return;
+      this.setData({ calendarEntries: result.entries, calendarNext: result.next, calendarPage: page, calendarPages: pages }); this.paintCalendar();
+    } catch (error) { if (valid()) { if (error.status === 401) this.clearSession(); else this.setData({ calendarError: error.status === 404 ? '请先更新微信后台，当前版本尚未支持三餐日历。' : error.message }); } }
+    finally { if (valid()) this.setData({ calendarLoading: false }); }
   },
-  // 按旧记录中的菜名找晚餐，淘汰菜也一起查。
-  onHistorySearch(e) { this.setData({ historySearch: e.detail.value }); this.filterHistory(); },
-  // 清空搜索后恢复全部历史，已展开的卡片仍保留。
-  clearHistorySearch() { this.setData({ historySearch: '' }); this.filterHistory(); },
-  // 一次只展开一轮，切换晚餐时先收起淘汰列表。
-  toggleHistoryDetail(e) {
-    const id = e.currentTarget.dataset.id;
-    this.setData({ historyExpandedId: this.data.historyExpandedId === id ? '' : id, historyRejectedId: '', historyRejectedLimit: 10 }); this.filterHistory();
+  // 切月份时先清空旧日期详情，不能把上个月的菜显示在新日期下面。
+  changeCalendarMonth(e) {
+    const offset = Number(e.currentTarget.dataset.offset); const month = calendar.shiftMonth(this.data.calendarMonth, offset);
+    if (month < '1000-01' || month > '9999-12') return;
+    this.setData({ calendarMonth: month, calendarDate: month + '-01', calendarMarks: [], calendarEntries: [], calendarGroups: [], calendarNext: null }); this.paintCalendar(); this.loadCalendar();
   },
-  // 淘汰记录单独展开，先显示十条，避免页面过长。
-  toggleHistoryRejected(e) {
-    const id = e.currentTarget.dataset.id;
-    this.setData({ historyRejectedId: this.data.historyRejectedId === id ? '' : id, historyRejectedLimit: 10 }); this.filterHistory();
-  },
-  // 一次只展开十条淘汰结果，不让历史详情一打开就铺满几百行。
-  moreHistoryRejected() { this.setData({ historyRejectedLimit: Math.min(400, this.data.historyRejectedLimit + 10) }); this.filterHistory(); },
-  // 复用前让用户确认；只有保存成功才回到新晚餐，失败保留原页面。
-  async repeatHistory(e) {
-    if (this.data.busy || !this.data.synced) return;
-    const past = this.data.history.find(m => m.id === e.currentTarget.dataset.id);
-    if (!past) return;
-    if (!past.canRepeat) return this.notice(past.repeatReason);
-    if (!await this.confirm('用这轮入选菜开始新一轮：' + past.repeatNames + '？会按当前菜单重新评分，当前晚餐保留在历史里。')) return;
-    if (await this.mutate({ action: 'mealRepeat', mealId: past.id }, '已重新搭配，请重新评分')) {
-      this._mealDraftDirty = false;
-      this.setData({ meatCount: this._kitchen.mealPreferences.meatCount, vegCount: this._kitchen.mealPreferences.vegCount, fridgeOnly: this.data.meal.fridgeOnly === true, showHistory: false });
-      wx.pageScrollTo({ scrollTop: 0, duration: 200 });
-    }
-  },
+  // 今天按北京时间定位，跨月时也一起切回对应月份。
+  calendarToday() { const date = calendar.today(); this.setData({ calendarMonth: date.slice(0, 7), calendarDate: date, calendarEntries: [], calendarGroups: [], calendarNext: null }); this.paintCalendar(); this.loadCalendar(); },
+  // 空日期格不响应；真实日期即使没有记录，也能显示明确的空状态。
+  chooseCalendarDate(e) { const date = e.currentTarget.dataset.date; if (!date) return; this.setData({ calendarDate: date, calendarEntries: [], calendarGroups: [], calendarNext: null }); this.paintCalendar(); this.loadCalendar(); },
+  // 下一页替换当前40道，记录再多也不会无限堆在手机内存里。
+  calendarNextPage() { if (this.data.calendarLoading || !this.data.calendarNext) return; this.loadCalendar(this.data.calendarNext, this.data.calendarPage + 1, this.data.calendarPages.concat(this._calendarCursor || null)); },
+  // 上一页使用之前保存的读取位置，不从后台一次取出全部历史。
+  calendarPreviousPage() { if (this.data.calendarLoading || !this.data.calendarPages.length) return; const pages = this.data.calendarPages.slice(); const cursor = pages.pop(); this._calendarCursor = cursor; this.loadCalendar(cursor, this.data.calendarPage - 1, pages); },
+  // 淘汰菜单独展开，默认只看达到7分的菜。
+  toggleCalendarRejected(e) { const id = e.currentTarget.dataset.id; this.setData({ calendarRejected: this.data.calendarRejected.includes(id) ? this.data.calendarRejected.filter(x => x !== id) : this.data.calendarRejected.concat(id) }); this.paintCalendar(); },
+  // 日历故障可以单独重试，不清空已经同步好的冰箱。
+  retryCalendar() { this.loadCalendar(); },
   onIngredient(e) { this.setData({ ingredient: e.detail.value }); },
   async addIngredient() {
     const name = this.data.ingredient.trim(); if (!name) return;

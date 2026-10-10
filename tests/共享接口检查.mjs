@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-const base=process.argv[2] || 'http://127.0.0.1:5173';
+const base=process.argv[2] || 'http://127.0.0.1:8080';
 const phrase='检查厨房-'+crypto.randomUUID();
 async function login(passphrase,role){const r=await fetch(base+'/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({passphrase,role})});const p=await r.json();assert.equal(r.status,200,JSON.stringify(p));return p.token;}
 async function read(token){const r=await fetch(base+'/api/kitchen',{headers:{Authorization:'Bearer '+token}});assert.equal(r.status,200);return r.json();}

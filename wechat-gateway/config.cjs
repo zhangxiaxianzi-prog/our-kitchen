@@ -6,10 +6,10 @@ function configuration(env = process.env) {
   const port = Number(env.DB_PORT || 3306);
   const listenPort = Number(env.PORT || 8080);
   if (![port, listenPort].every(x => Number.isInteger(x) && x > 0 && x <= 65535)) throw new Error('服务端口配置不正确');
-  const origins = (env.WEB_ORIGINS || 'https://our-kitchen-oct09.berryokapi.chatgpt.site').split(',').map(x => x.trim());
+  const origins = (env.WEB_ORIGINS || '').split(',').map(x => x.trim()).filter(Boolean);
   for (const origin of origins) {
     const url = new URL(origin);
-    if (url.protocol !== 'https:' || url.origin !== origin) throw new Error('网站来源必须填写完整的HTTPS域名');
+    if (url.protocol !== 'https:' || url.origin !== origin) throw new Error('允许的请求来源必须填写完整的HTTPS域名');
   }
   return { port: listenPort, secret: env.KITCHEN_SESSION_SECRET, origins,
     database: { host: env.DB_HOST, port, database: env.DB_NAME, user: env.DB_USER, password: env.DB_PASSWORD,

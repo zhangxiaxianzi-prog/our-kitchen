@@ -1,6 +1,6 @@
 import { initialMenu, ingredientName, type Dish } from './menu';
 export type Candidate = { id: string; dish: Dish; scores: [number | null, number | null]; partnerRated?: boolean; blocked?: string };
-export type RejectedDish = { id: string; dishId: string; name: string; kind: Dish['kind']; scores: [number, number] };
+export type RejectedDish = { id: string; dishId: string; name: string; kind: Dish['kind']; scores: [number, number]; ingredients?: string[] };
 // 一轮最多保留400道淘汰结果，与菜单上限相同，避免反复增删菜单让历史无限增大。
 export const maxRejectedDishes = 400;
 export type MealPreferences = { meatCount: number; vegCount: number };
@@ -124,19 +124,7 @@ export function applyAction(k: Kitchen, input: Action, role: 0 | 1): Kitchen {
     }
     startMeal(k, candidates, fridge);
   } else if (a === 'mealRepeat') {
-    const id = requireText(input.mealId, 80);
-    const source = k.meals.slice(1).find(m => m.id === id);
-    if (!source) throw new Error('这份历史晚餐已不存在，请刷新后选择');
-    const selected = source.candidates.filter(c => c.scores.every(x => x !== null) && Number(c.scores[0]) + Number(c.scores[1]) >= 7);
-    if (!selected.length) throw new Error('这份晚餐没有入选菜，请重新搭配');
-    // 先逐道核对现有菜单，任何一项不可用都不开始新一轮，也不偷偷换成别的菜。
-    const candidates = selected.map(c => {
-      const dish = k.dishes.find(d => d.id === c.dish.id && d.active);
-      if (!dish) throw new Error('“' + c.dish.name + '”已删除或不再推荐，请重新选择');
-      if (source.fridgeOnly && !dish.ingredients.every(x => k.pantry.includes(x))) throw new Error('“' + dish.name + '”现在缺少食材，请补充冰箱或重新选择');
-      return { id: crypto.randomUUID(), dish: structuredClone(dish), scores: [null, null] as [null, null] };
-    });
-    startMeal(k, candidates, source.fridgeOnly === true);
+    throw new Error('历史复用已取消，请更新页面后使用三餐日历');
   } else if (['score', 'replace', 'pick'].includes(a)) {
     const m = k.meals.find(x => x.id === input.mealId);
     const c = m?.candidates.find(x => x.id === input.candidateId);
@@ -156,7 +144,7 @@ export function applyAction(k: Kitchen, input: Action, role: 0 | 1): Kitchen {
       if (c.scores.every(x => x !== null) && Number(c.scores[0]) + Number(c.scores[1]) < 7) {
         // 先留下两人的最终评分，再换菜；没有可换的菜也要保留评分结果。
         m.rejected = m.rejected || [];
-        m.rejected.push({ id: c.id, dishId: c.dish.id, name: c.dish.name, kind: c.dish.kind, scores: [Number(c.scores[0]), Number(c.scores[1])] });
+        m.rejected.push({ id: c.id, dishId: c.dish.id, name: c.dish.name, kind: c.dish.kind, ingredients: [...c.dish.ingredients], scores: [Number(c.scores[0]), Number(c.scores[1])] });
         const available = availableDishes(k, c.dish.kind, exclude, fridge);
         if (m.rejected.length >= maxRejectedDishes) c.blocked = '本轮淘汰记录已到400道，请开始新一轮搭配';
         else if (available.length) replaceCandidate(c, available[Math.floor(Math.random() * available.length)]);

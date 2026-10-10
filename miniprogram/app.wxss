@@ -16,57 +16,57 @@ textarea { height:180rpx; min-height:80px; line-height:1.6; }
 .login-page { padding-bottom:calc(32rpx + env(safe-area-inset-bottom)); }
 .login { padding-top:12rpx; }
 .eyebrow { display:block; color:#708361; font-size:24rpx; margin:20rpx 0 12rpx; }
-.headline { display:block; white-space:pre-line; font-size:44rpx; font-weight:600; line-height:1.35; margin:12rpx 0 16rpx; }
-.description { display:block; color:#6f786b; font-size:28rpx; line-height:1.65; margin:12rpx 0; }
-.card { background:#fffefa; border:1rpx solid #e2e5da; border-radius:24rpx; padding:24rpx; margin:22rpx 0; }
+.headline { display:block; white-space:pre-line; font-size:42rpx; font-weight:600; line-height:1.3; margin:20rpx 0 24rpx; }
+.description { display:block; color:#6f786b; font-size:27rpx; line-height:1.5; margin:10rpx 0; }
+.card { background:#fffefa; border:1rpx solid #e2e5da; border-radius:20rpx; padding:24rpx; margin:16rpx 0; }
 .login-card { margin-top:24rpx; }
 .title { font-size:32rpx; font-weight:600; min-width:0; }
 .label { font-size:28rpx; color:#64765a; margin:22rpx 0 12rpx; }
 .row { display:flex; align-items:center; gap:12rpx; min-width:0; }
 .role { flex:1; min-width:0; background:#fafbf5; border:1rpx solid #d9e1d2; padding:20rpx 12rpx; color:#65715e; }
 .chosen { background:#e8eee3!important; border-color:#91a67d!important; color:#3c5944!important; }
-.primary { background:#3c5944; color:#fff; padding:22rpx 24rpx; }
-.secondary { background:transparent; border:1rpx solid #cdd8c5; color:#3c5944; padding:20rpx; }
+.primary { background:#3c5944; color:#fff; padding:18rpx 24rpx; font-weight:600; }
+.secondary { background:transparent; border:1rpx solid #cdd8c5; color:#3c5944; padding:16rpx 20rpx; }
 .full { width:100%; margin:20rpx 0; }
-.note { display:block; color:#76816c; font-size:25rpx; line-height:1.65; margin:20rpx 0; }
+.note { display:block; color:#76816c; font-size:25rpx; line-height:1.5; margin:14rpx 0; }
 .error { padding:20rpx; background:#f4e6d6; color:#825b3d; border-radius:16rpx; font-size:27rpx; line-height:1.65; margin:16rpx 0; word-break:break-word; }
 .top { display:flex; align-items:center; justify-content:space-between; gap:12rpx; border-bottom:1rpx solid #e2e5da; padding-bottom:10rpx; font-size:30rpx; }
 .link { background:transparent; color:#536e47; padding:16rpx 12rpx; font-size:27rpx; flex-shrink:0; }
 .sync { font-size:24rpx; color:#708361; margin-top:12rpx; }
-.switch-row { display:flex; align-items:center; justify-content:space-between; gap:16rpx; font-size:28rpx; color:#65715e; margin:20rpx 0; }
+.switch-row { display:flex; align-items:center; justify-content:space-between; gap:16rpx; font-size:28rpx; color:#65715e; margin:8rpx 0 16rpx; }
 .switch-row switch { flex-shrink:0; }
-.section-title { display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:12rpx; font-size:31rpx; font-weight:600; margin:28rpx 0 16rpx; }
+.section-title { display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:12rpx; font-size:31rpx; font-weight:600; margin:26rpx 0 12rpx; }
 .small { font-size:25rpx; color:#74816a; font-weight:400; line-height:1.6; }
-.empty { padding:36rpx 24rpx; border:1rpx dashed #ccd8c0; border-radius:20rpx; text-align:center; color:#708361; font-size:28rpx; line-height:1.65; margin:20rpx 0; }
+.empty { padding:32rpx 24rpx; background:#efefe6; border-radius:16rpx; text-align:center; color:#708361; font-size:28rpx; line-height:1.65; margin:20rpx 0; }
 .dish-top { display:flex; align-items:flex-start; justify-content:space-between; gap:16rpx; }
 .dish-top .title { flex:1; word-break:break-word; }
 .kind,.badge { flex-shrink:0; background:#f1eee2; color:#74785f; padding:8rpx 14rpx; border-radius:10rpx; font-size:24rpx; }
 .passed { background:#e8eee3; color:#54754c; }
-.dish-name { font-size:38rpx; font-weight:600; line-height:1.4; margin:18rpx 0 12rpx; word-break:break-word; }
-.availability { display:block; color:#846d48; font-size:26rpx; line-height:1.65; margin:14rpx 0; word-break:break-word; }
-.rating-label { display:flex; flex-wrap:wrap; justify-content:space-between; gap:10rpx; color:#64765a; font-size:27rpx; margin:20rpx 0 12rpx; }
+.dish-name { font-size:38rpx; font-weight:600; line-height:1.3; margin:0; word-break:break-word; }
+.availability { display:block; color:#846d48; font-size:26rpx; line-height:1.5; margin:8rpx 0; word-break:break-word; }
+.rating-label { display:flex; flex-wrap:wrap; justify-content:space-between; gap:10rpx; color:#64765a; font-size:28rpx; margin:16rpx 0 10rpx; }
 /* 六个分数不挤压；小屏改成两行，每个按钮仍有足够点击面积。 */
 .scores { display:flex; flex-wrap:wrap; gap:8rpx; }
-.score { flex:1; min-width:0; padding:18rpx 0; background:#fafbf5; border:1rpx solid #dce3d2; color:#65715e; font-size:32rpx; }
+.score { flex:1; min-width:0; padding:14rpx 0; background:#fafbf5; border:1rpx solid #dce3d2; color:#65715e; font-size:32rpx; }
 .score.chosen { background:#3c5944!important; color:#fff!important; }
-.card-footer { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8rpx; border-top:1rpx solid #e2e5da; padding-top:10rpx; margin-top:20rpx; }
+.card-footer { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8rpx; border-top:1rpx solid #e2e5da; padding-top:8rpx; margin-top:14rpx; }
 .card-footer .row { margin-left:auto; }
 .history-row { padding:18rpx 0; border-bottom:1rpx solid #eceee4; font-size:27rpx; color:#65715e; line-height:1.65; }
-.add-bar { display:flex; gap:12rpx; margin:22rpx 0; }
+.add-bar { display:flex; gap:12rpx; margin:18rpx 0; }
 .add-bar input { flex:1; min-width:0; }
 .add-bar button { flex-shrink:0; padding-left:22rpx; padding-right:22rpx; }
 .chips { display:flex; flex-wrap:wrap; gap:12rpx; }
 .chip { padding:16rpx 20rpx; background:#fffefa; border:1rpx solid #dce3d2; color:#65715e; font-size:27rpx; border-radius:14rpx; }
 .pantry-chip { display:flex; align-items:center; justify-content:space-between; gap:8rpx; width:calc(50% - 6rpx); min-width:0; border:1rpx solid #e2e5da; background:#fffefa; padding:8rpx 8rpx 8rpx 16rpx; border-radius:16rpx; font-size:28rpx; }
 .pantry-chip text { flex:1; min-width:0; word-break:break-word; }
-.shopping-row { display:flex; align-items:center; justify-content:space-between; gap:12rpx; padding:16rpx; background:#fffefa; border-bottom:1rpx solid #e2e5da; }
+.shopping-row { display:flex; align-items:center; justify-content:space-between; gap:12rpx; padding:12rpx 16rpx; background:#fffefa; border-bottom:1rpx solid #e2e5da; }
 .shopping-row .row { flex:1; }
 .shopping-row .row text { flex:1; min-width:0; word-break:break-word; }
 .shopping-row switch { flex-shrink:0; }
 .strike { text-decoration:line-through; color:#8c9680; }
 .filters { display:flex; flex-wrap:wrap; gap:12rpx; }
 .menu-actions { flex-wrap:wrap; justify-content:flex-end; gap:8rpx; border-top:1rpx solid #eceee4; padding-top:12rpx; }
-.menu-actions .link { background:#f4f6ee; border-radius:12rpx; padding:16rpx; }
+.menu-actions .link { background:transparent; padding:10rpx 12rpx; font-size:25rpx; }
 .danger { color:#a45e3e; }
 /* 底栏留出系统手势区域；输入时隐藏，不与键盘争用屏幕空间。 */
 .bottom-nav { position:fixed; bottom:0; left:0; right:0; display:flex; padding:10rpx 12rpx calc(10rpx + env(safe-area-inset-bottom)); background:#fffefa; border-top:1rpx solid #e2e5da; z-index:10; }
@@ -103,12 +103,12 @@ textarea { height:180rpx; min-height:80px; line-height:1.6; }
 .fridge-note { margin:14rpx 0; }
 .ingredient-browser { display:flex; min-height:0; overflow:hidden; border:1rpx solid #e2e5da; border-radius:18rpx; background:#fffefa; }
 .fridge-browser { height:50vh; min-height:240px; }
-.category-sidebar { width:164rpx; flex-shrink:0; height:100%; background:#efefe6; }
-.page button.category-button { width:100%; margin:0; display:flex; flex-direction:column; justify-content:center; align-items:center; min-height:52px; padding:16rpx 6rpx; background:transparent; border-radius:0; font-size:27rpx; color:#64765a; }
+.category-sidebar { width:140rpx; flex-shrink:0; height:100%; background:#efefe6; }
+.page button.category-button { width:100%; margin:0; display:flex; flex-direction:column; justify-content:center; align-items:center; min-height:48px; padding:12rpx 6rpx; background:transparent; border-radius:0; font-size:27rpx; color:#64765a; }
 .category-button.active-category { background:#fffefa!important; color:#3c5944; border-left:6rpx solid #3c5944; font-weight:600; }
 .category-count { font-size:22rpx; color:#85917b; }
 .ingredient-results { height:100%; flex:1; width:0; min-width:0; }
-.page button.ingredient-item { display:flex; align-items:center; justify-content:space-between; gap:12rpx; width:100%; margin:0; min-height:52px; padding:22rpx 18rpx; border-radius:0; border-bottom:1rpx solid #eceee4; background:transparent; color:#28382d; text-align:left; }
+.page button.ingredient-item { display:flex; align-items:center; justify-content:space-between; gap:12rpx; width:100%; margin:0; min-height:52px; padding:16rpx 20rpx; border-radius:0; border-bottom:1rpx solid #eceee4; background:transparent; color:#28382d; text-align:left; }
 .ingredient-item[disabled] { opacity:1; }
 .ingredient-name { flex:1; min-width:0; word-break:break-word; }
 .ingredient-check { flex-shrink:0; font-size:24rpx; color:#64765a; }
@@ -119,18 +119,18 @@ textarea { height:180rpx; min-height:80px; line-height:1.6; }
 .add-browser { flex:1; height:0; border-radius:0; border-left:0; border-right:0; }
 .custom-title,.selected-summary { display:flex; justify-content:space-between; align-items:center; gap:8rpx; }
 .custom-title { margin-bottom:12rpx; flex-wrap:wrap; }
-.custom-category { min-height:32px; display:flex; align-items:center; font-size:25rpx; color:#3c5944; padding:4rpx 10rpx; background:#e8eee3; border-radius:10rpx; }
-.selected-summary .link { min-height:32px; padding:8rpx; font-size:25rpx; }
-.selected-ingredients { height:42px; white-space:nowrap; margin-bottom:12rpx; }
-.page button.selected-ingredient { display:inline-flex; align-items:center; min-height:36px; width:auto; margin:0 10rpx 0 0; padding:10rpx 14rpx; background:#e8eee3; color:#3c5944; font-size:25rpx; border-radius:12rpx; }
-@media (max-width:360px) { .category-sidebar { width:150rpx; } .fridge-heading .headline { font-size:36rpx; } }
+.custom-category { min-height:44px; display:flex; align-items:center; font-size:25rpx; color:#3c5944; padding:4rpx 10rpx; background:#e8eee3; border-radius:10rpx; }
+.selected-summary .link { min-height:44px; padding:8rpx; font-size:25rpx; }
+.selected-ingredients { height:48px; white-space:nowrap; margin-bottom:12rpx; }
+.page button.selected-ingredient { display:inline-flex; align-items:center; min-height:44px; width:auto; margin:0 10rpx 0 0; padding:10rpx 14rpx; background:#e8eee3; color:#3c5944; font-size:25rpx; border-radius:12rpx; }
+@media (max-width:360px) { .category-sidebar { width:132rpx; } .fridge-heading .headline { font-size:36rpx; } }
 
 /* 自定义输入时收起多余说明，保存按钮和待选按钮在键盘上方仍能操作。 */
 .keyboard-sheet .custom-add-row { margin-bottom:12rpx; }
 
 /* 数量选择保留足够的点击范围，小屏下自动换行。 */
-.meal-counts { display:flex; flex-wrap:wrap; align-items:center; gap:16rpx; margin:24rpx 0 12rpx; }
-.count-choice { min-height:44px; display:flex; align-items:center; padding:16rpx 24rpx; border:1rpx solid #cdd8c5; background:#fffefa; border-radius:16rpx; color:#3c5944; }
+.meal-counts { display:flex; flex-wrap:wrap; align-items:center; gap:12rpx; margin:0 0 8rpx; }
+.count-choice { min-height:44px; display:flex; align-items:center; gap:8rpx; padding:12rpx 16rpx; border:1rpx solid #cdd8c5; background:#fffefa; border-radius:12rpx; color:#3c5944; }
 /* 食材前面盖住移除按钮，左滑后只露出这一行，右滑恢复。 */
 .pantry-swipe-row { position:relative; overflow:hidden; }
 .page button.pantry-swipe-front { position:relative; z-index:1; background:#fffefa; transform:translateX(0); transition:transform .18s ease; }
@@ -156,3 +156,60 @@ textarea { height:180rpx; min-height:80px; line-height:1.6; }
 .history-repeat { border-top:1rpx solid #e2e5da; padding-top:18rpx; margin-top:16rpx; }
 .history-repeat .small { display:block; }
 .history-repeat .full { margin-top:14rpx; }
+
+/* 月历按七列排列，按钮至少44px高，手机上不靠细小圆点操作。 */
+.calendar-card { padding:8rpx 12rpx 12rpx; }
+.calendar-toolbar { display:flex; align-items:center; justify-content:space-between; gap:8rpx; margin-bottom:4rpx; }
+.page button.calendar-arrow { width:80rpx; min-width:80rpx; padding:8rpx; font-size:38rpx; margin:0; }
+.calendar-grid { display:flex; flex-wrap:wrap; }
+.calendar-week,.calendar-cell { width:14.285714%; box-sizing:border-box; text-align:center; }
+.calendar-week { color:#849179; font-size:24rpx; padding:2rpx 0 6rpx; }
+.calendar-cell { padding:0 2rpx; min-height:44px; }
+.page button.calendar-day { width:100%; min-height:44px; margin:0; padding:2px 0; border:0; border-radius:12rpx; background:transparent; color:#3c5944; font-size:30rpx; line-height:1.5; display:flex; flex-direction:column; align-items:center; }
+.page button.calendar-today { box-shadow:inset 0 0 0 2rpx #a3b08e; }
+.page button.calendar-selected { background:#3c5944; color:#fffefa; }
+.calendar-dot { width:6rpx; height:6rpx; margin-top:0; border-radius:50%; background:transparent; }
+.calendar-has-record { background:#93a17b; }
+.calendar-selected .calendar-has-record { background:#fffefa; }
+.calendar-round .title { overflow-wrap:anywhere; }
+.calendar-pagination { display:flex; align-items:center; justify-content:space-between; gap:12rpx; margin:24rpx 0; color:#74816a; font-size:26rpx; }
+.calendar-pagination button { margin:0; }
+.nav-button { font-size:24rpx; padding-left:2rpx; padding-right:2rpx; }
+
+/* 选菜页先看搭配条件，再看菜名和评分；规则只在候选区说明一次。 */
+.meal-setup { padding:20rpx; background:#efefe6; border-radius:16rpx; }
+.meal-setup .full { margin:0; }
+.meal-counts picker { flex:1; min-width:0; }
+.meal-counts > .small { width:100%; text-align:right; }
+.count-choice { justify-content:center; font-size:27rpx; }
+.count-number { font-size:34rpx; font-weight:600; }
+.picker-caret { color:#74816a; margin-left:4rpx; }
+.setup-note { display:block; margin-top:10rpx; text-align:center; }
+.score-rule { display:block; margin-bottom:14rpx; }
+.selection-count { color:#3c5944; font-size:26rpx; font-weight:500; }
+.dish-heading { min-width:0; flex:1; }
+.dish-heading .kind { display:inline-block; margin-top:10rpx; padding:4rpx 10rpx; }
+.ingredients-line { margin-top:14rpx; }
+.dish-card .badge { max-width:45%; flex-shrink:1; text-align:center; }
+.dish-card .rating-label:not(.small) { color:#28382d; font-weight:500; }
+.shopping-generate .full { margin:16rpx 0 0; }
+.page-caption { display:block; margin:-12rpx 0 18rpx; }
+.calendar-pagination + .page-caption { margin:0; }
+/* 菜单用连续的行展示，避免每道菜都占一个大卡片。 */
+.menu-card { border:0; border-bottom:1rpx solid #e2e5da; border-radius:0; margin:0; padding:20rpx 16rpx 8rpx; }
+.menu-card .availability { margin:6rpx 0; }
+.menu-actions { border-top:0; gap:4rpx; padding-top:0; }
+.menu-card .title { font-size:32rpx; }
+.filters { gap:8rpx; margin-bottom:16rpx; }
+.filters .chip { padding:10rpx 16rpx; }
+/* 小屏优先让点击区域完整，按钮和长名称按需要换行。 */
+@media (max-width:360px) {
+  .page { padding-left:20rpx; padding-right:20rpx; }
+  .headline { font-size:38rpx; }
+  .meal-setup { padding:16rpx; }
+  .count-choice { padding:10rpx 8rpx; gap:6rpx; }
+  .menu-actions .link { flex:0 1 auto; }
+}
+@media (prefers-reduced-motion:reduce) {
+  .page button.pantry-swipe-front { transition:none; }
+}

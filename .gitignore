@@ -53,3 +53,8 @@ next-env.d.ts
 /wechat-gateway/node_modules/
 /wechat-gateway/dist/
 *.厨房备份.json
+
+# 小程序个人工具设置与离线检查输出不上传。
+/project.private.config.json
+/.test-runtime/
+*.日历备份.jsonl

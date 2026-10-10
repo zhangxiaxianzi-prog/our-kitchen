@@ -1,1 +1,0 @@
-CREATE INDEX `login_attempts_bucket_idx` ON `login_attempts` (`bucket`);

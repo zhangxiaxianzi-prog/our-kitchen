@@ -30,9 +30,10 @@ function createServer(service, auth, origins, logger = console) {
     response.setHeader('Content-Type', 'application/json; charset=utf-8');
     response.setHeader('X-Content-Type-Options', 'nosniff');
     const reply = (value, status = 200) => { response.statusCode = status; response.end(JSON.stringify(value)); };
-    const path = request.url?.split('?')[0];
+    const url = new URL(request.url, 'http://localhost');
+    const path = url.pathname;
     const origin = request.headers.origin;
-    if (origin && !origins.includes(origin)) return reply({ error: '请从厨房网站访问' }, 403);
+    if (origin && !origins.includes(origin)) return reply({ error: '这个请求来源不允许访问厨房' }, 403);
     if (origin) {
       response.setHeader('Access-Control-Allow-Origin', origin); response.setHeader('Vary', 'Origin');
       response.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
@@ -47,16 +48,18 @@ function createServer(service, auth, origins, logger = console) {
     try {
       if (path === '/health' && request.method === 'GET') return reply({ ok: true });
       if (path === '/ready' && request.method === 'GET') { await service.repository.ready(); return reply({ ok: true }); }
-      if (!['/api/login', '/api/kitchen', '/api/kitchen/restore'].includes(path)) return reply({ error: '没有这个厨房接口' }, 404);
-      if (!['GET', 'POST'].includes(request.method) || (path !== '/api/kitchen' && request.method !== 'POST')) return reply({ error: '这个接口不支持该操作方式' }, 405);
+      if (!['/api/login', '/api/kitchen', '/api/kitchen/restore', '/api/calendar', '/api/calendar/export', '/api/calendar/restore'].includes(path)) return reply({ error: '没有这个厨房接口' }, 404);
+      if (!['GET', 'POST'].includes(request.method) || (path === '/api/login' || path === '/api/kitchen/restore' || path === '/api/calendar/restore') && request.method !== 'POST' || (path === '/api/calendar' || path === '/api/calendar/export') && request.method !== 'GET') return reply({ error: '这个接口不支持该操作方式' }, 405);
       const session = path === '/api/login' ? null : auth.read(request.headers.authorization);
       if (path !== '/api/login' && !session) return reply({ error: '请重新输入共同口令登录' }, 401);
+      if (path === '/api/calendar') return reply(await service.calendar(session, url.searchParams));
+      if (path === '/api/calendar/export') return reply(await service.exportCalendar(session, url.searchParams));
       if (request.method === 'GET') return reply(await service.read(session));
       if (!request.headers['content-type']?.includes('application/json')) throw new KitchenError('请求格式需要使用JSON');
-      const limit = path === '/api/login' ? 2000 : path === '/api/kitchen/restore' ? 4 * 1024 * 1024 : 8000;
+      const limit = path === '/api/login' ? 2000 : path === '/api/calendar/restore' ? 128 * 1024 : path === '/api/kitchen/restore' ? 4 * 1024 * 1024 : 8000;
       if (Number(request.headers['content-length']) > limit) throw new KitchenError('请求内容过长', 413);
       const input = await readBody(request, limit);
-      const result = path === '/api/login' ? await service.login(input) : path === '/api/kitchen/restore' ? await service.restore(session, input) : await service.change(session, input);
+      const result = path === '/api/login' ? await service.login(input) : path === '/api/kitchen/restore' ? await service.restore(session, input) : path === '/api/calendar/restore' ? await service.restoreCalendar(session, input) : await service.change(session, input);
       reply(result);
     } catch (error) {
       if (error instanceof KitchenError) reply({ error: error.message }, error.status);

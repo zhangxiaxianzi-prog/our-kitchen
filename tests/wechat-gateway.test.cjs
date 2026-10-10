@@ -7,21 +7,34 @@ const { sessions } = require('../wechat-gateway/session.cjs');
 const { configuration } = require('../wechat-gateway/config.cjs');
 const { createServer } = require('../wechat-gateway/server.cjs');
 const { validateBackup } = require('../wechat-gateway/backup.cjs');
+const { calendarEntries, calendarDate } = require('../wechat-gateway/calendar.cjs');
 const { MysqlKitchenRepository } = require('../wechat-gateway/repository.cjs');
 const secret = '仅用于离线检查的密钥不用于线上厨房123456789012345678901234567890';
 // 用可同时读写的测试仓库检查业务冲突；这不代表真实MySQL已经联通。
 class MemoryRepository {
-  rows = new Map(); rates = new Map();
+  rows = new Map(); rates = new Map(); history = new Map(); seeded = new Set(); sequence = 0;
   async ready() {}
   async ensure(id, state) { if (!this.rows.has(id)) this.rows.set(id, { version: 1, state, restore_hash: null }); }
   async read(id) { return structuredClone(this.rows.get(id)); }
-  async save(id, version, state) {
+  async seedHistory(id) { if (this.seeded.has(id)) return; this.append(id, calendarEntries(JSON.parse(this.rows.get(id).state)), null); this.seeded.add(id); }
+  append(id, entries, rank) {
+    if (!this.history.has(id)) this.history.set(id, new Map()); const saved = this.history.get(id);
+    const nextRank = rank === null ? null : Math.max(rank, ...[...saved.values()].map(e => e.rank + 1));
+    for (const e of [...entries].sort((a, b) => a.rank - b.rank)) if (!saved.has(e.key)) {
+      const same = [...saved.values()].find(x => x.mealId === e.mealId);
+      saved.set(e.key, { ...structuredClone(e), id: String(++this.sequence), rank: same ? same.rank : nextRank === null ? e.rank : nextRank });
+    }
+  }
+  async calendarMonth(id, query) { const days = new Map(); let unknownCount = 0; for (const e of (this.history.get(id) || new Map()).values()) { if (e.date === 'unknown') unknownCount++; else if (e.date >= query.start && e.date < query.end) days.set(e.date, (days.get(e.date) || 0) + 1); } return { days: [...days].map(([date, count]) => ({ date, count })), unknownCount }; }
+  async calendarDay(id, query) { const rows = [...(this.history.get(id) || new Map()).values()].filter(e => e.date === query.date && (!query.cursor || e.rank < query.cursor.rank || e.rank === query.cursor.rank && Number(e.id) < Number(query.cursor.id))).sort((a, b) => b.rank - a.rank || Number(b.id) - Number(a.id)); const entries = rows.slice(0, 40); const last = entries.at(-1); return { entries, next: rows.length > 40 ? { rank: last.rank, id: last.id } : null }; }
+  async calendarExport(id, after, maximum) { const rows = [...(this.history.get(id) || new Map()).values()]; maximum ||= String(Math.max(0, ...rows.map(x => Number(x.id)))); const selected = rows.filter(e => Number(e.id) > Number(after) && Number(e.id) <= Number(maximum)).sort((a, b) => Number(a.id) - Number(b.id)); return { maximum, entries: selected.slice(0, 100), next: selected.length > 100 ? selected[99].id : null }; }
+  async save(id, version, state, entries = []) {
     const row = this.rows.get(id); if (row.version !== version) return false;
-    row.state = state; row.version++; return true;
+    this.append(id, entries, version + 1); row.state = state; row.version++; return true;
   }
   async restore(id, version, state, hash) {
     const row = this.rows.get(id); if (row.version !== version || row.restore_hash) return false;
-    row.state = state; row.version++; row.restore_hash = hash; return true;
+    this.append(id, calendarEntries(JSON.parse(state)), null); row.state = state; row.version++; row.restore_hash = hash; return true;
   }
   async allowLogin(id, bucket, maximum = 20) { const count = (this.rates.get(id) || 0) + 1; this.rates.set(id, count); return count <= maximum; }
 }
@@ -90,7 +103,8 @@ test('登录限额由共享仓库控制，另一个实例不能重新获得额�
 });
 test('数据库保存采用带版本号的单表更新，参数不拼接SQL，5.7登录次数原子领取', async () => {
   const repo = Object.create(MysqlKitchenRepository.prototype); const calls = [];
-  repo.pool = { async execute(options, values) { calls.push({ sql: options.sql, values }); return [{ affectedRows: 1 }]; } };
+  const connection = { async beginTransaction() {}, async commit() {}, async rollback() {}, release() {}, async execute(options, values) { calls.push({ sql: options.sql, values }); return [{ affectedRows: 1 }]; } };
+  repo.pool = { getConnection: async () => connection, execute: connection.execute };
   assert.equal(await repo.save('厨房编号', 9, '厨房内容'), true);
   assert.match(calls[0].sql, /WHERE id = \? AND version = \?/);
   assert.deepEqual(calls[0].values, ['厨房内容', '厨房编号', 9]);
@@ -104,9 +118,9 @@ test('缺少配置和过短密钥停止启动，数据库连接数及等待队�
   assert.equal(configuration(valid).database.connectionLimit, 5); assert.equal(configuration(valid).database.queueLimit, 20);
   assert.throws(() => configuration({ ...valid, KITCHEN_SESSION_SECRET: '短密钥' }), /至少/);
 });
-test('HTTP完整流程、网站来源限制、请求体上限、数据库就绪检查和保密日志', async t => {
+test('HTTP完整流程、来源限制、请求体上限、数据库就绪检查和保密日志', async t => {
   const { service, auth, repo } = setup(); const logs = [];
-  const origin = 'https://our-kitchen-oct09.berryokapi.chatgpt.site';
+  const origin = 'https://example.com';
   const server = createServer(service, auth, [origin], { error: (...args) => logs.push(args) });
   server.listen(0, '127.0.0.1'); await once(server, 'listening');
   t.after(() => new Promise(resolve => server.close(resolve)));
@@ -271,55 +285,82 @@ test('本轮淘汰记录到400道停止换菜，保留评分并允许开始新�
   applyAction(k, { action: 'mealCreate' }, 1); assert.equal(k.meals[0].rejected.length, 0);
 });
 // 再吃一顿只复用原来入选的菜，重新读取当前菜单，不沿用旧评分或改写历史。
-test('复用历史入选菜开始新一轮，使用当前菜单，旧评分不变，新编号重新评分', async () => {
-  const { service, auth } = setup(); const [boy, girl] = await couple(service, auth);
-  const old = (await service.change(boy, { action: 'mealCreate' })).kitchen.meals[0];
-  const candidate = old.candidates[0];
-  await service.change(boy, { action: 'score', mealId: old.id, candidateId: candidate.id, score: 2 });
-  await service.change(girl, { action: 'score', mealId: old.id, candidateId: candidate.id, score: 5 });
-  await service.change(boy, { action: 'mealCreate' });
-  const before = (await service.readState(boy)).kitchen.meals.find(m => m.id === old.id);
-  await service.change(boy, { action: 'dishSave', id: candidate.dish.id, name: '重新编辑的入选菜', kind: 'veg', ingredients: ['新食材'] });
-  const repeated = (await service.change(girl, { action: 'mealRepeat', mealId: old.id, dishIds: ['不能由客户端决定复用菜'] })).kitchen;
-  assert.equal(repeated.meals[0].candidates.length, 1); assert.notEqual(repeated.meals[0].id, old.id);
-  const fresh = repeated.meals[0].candidates[0]; assert.notEqual(fresh.id, candidate.id); assert.equal(fresh.dish.id, candidate.dish.id);
-  assert.equal(fresh.dish.name, '重新编辑的入选菜'); assert.deepEqual(fresh.dish.ingredients, ['新食材']); assert.equal(fresh.dish.kind, 'veg');
-  assert.deepEqual(fresh.scores, [null, null]); assert.deepEqual(repeated.mealPreferences, { meatCount: 0, vegCount: 1 });
-  assert.deepEqual((await service.readState(boy)).kitchen.meals.find(m => m.id === old.id), before);
-  assert.equal((await service.read(boy)).kitchen.meals[0].candidates[0].partnerRated, false);
+test('历史复用接口关闭，返回提示且不改变当前选菜', async () => {
+  const { service, auth } = setup(); const [boy] = await couple(service, auth);
+  const before = await service.change(boy, { action: 'mealCreate' });
+  await assert.rejects(service.change(boy, { action: 'mealRepeat', mealId: before.kitchen.meals[0].id }), /历史复用已取消/);
+  assert.deepEqual(await service.read(boy), before);
 });
-test('复用历史没有入选菜、失效菜或食材不足时整次失败，不改变当前晚餐', async () => {
-  const { service, auth } = setup(); const [boy, girl] = await couple(service, auth);
-  const empty = (await service.change(boy, { action: 'mealCreate' })).kitchen.meals[0];
-  await service.change(boy, { action: 'mealCreate' });
-  let before = await service.readState(boy);
-  await assert.rejects(service.change(boy, { action: 'mealRepeat', mealId: empty.id }), /没有入选菜/);
-  assert.deepEqual(await service.readState(boy), before);
-  await assert.rejects(service.change(boy, { action: 'mealRepeat', mealId: before.kitchen.meals[0].id }), /历史晚餐已不存在/);
-  const selected = before.kitchen.meals[0];
-  for (const c of selected.candidates.slice(0, 2)) {
-    await service.change(boy, { action: 'score', mealId: selected.id, candidateId: c.id, score: 5 });
-    await service.change(girl, { action: 'score', mealId: selected.id, candidateId: c.id, score: 5 });
-  }
-  await service.change(boy, { action: 'mealCreate' });
-  await service.change(girl, { action: 'dishToggle', id: selected.candidates[1].dish.id });
-  before = await service.readState(boy);
-  await assert.rejects(service.change(boy, { action: 'mealRepeat', mealId: selected.id }), /不再推荐/);
-  assert.deepEqual(await service.readState(boy), before);
-  await service.change(girl, { action: 'dishDelete', id: selected.candidates[1].dish.id });
-  before = await service.readState(boy);
-  await assert.rejects(service.change(boy, { action: 'mealRepeat', mealId: selected.id }), /已删除/);
-  assert.deepEqual(await service.readState(boy), before);
-  // 用原有冰箱限制开始完整的一轮，之后移除食材，重吃不能越过原来的限制。
-  const state = before.kitchen; const pantry = [...new Set(state.dishes.flatMap(d => d.ingredients))];
-  for (let i = 0; i < pantry.length; i += 20) await service.change(boy, { action: 'pantryAddMany', items: pantry.slice(i, i + 20).map(name => ({ name })) });
-  const fridgeMeal = (await service.change(boy, { action: 'mealCreate', meatCount: 1, vegCount: 0, fridge: true })).kitchen.meals[0];
-  const c = fridgeMeal.candidates[0];
-  await service.change(boy, { action: 'score', mealId: fridgeMeal.id, candidateId: c.id, score: 5 });
-  await service.change(girl, { action: 'score', mealId: fridgeMeal.id, candidateId: c.id, score: 5 });
-  await service.change(boy, { action: 'mealCreate', fridge: false });
-  await service.change(girl, { action: 'pantryRemove', name: c.dish.ingredients[0] });
-  before = await service.readState(boy);
-  await assert.rejects(service.change(boy, { action: 'mealRepeat', mealId: fridgeMeal.id }), /缺少食材/);
-  assert.deepEqual(await service.readState(boy), before);
+test('三餐日历仅归档双人完成评分，低分换菜保留原食材且重复请求不重复', async () => {
+  const { service, auth, repo } = setup(); const [boy, girl] = await couple(service, auth);
+  const meal = (await service.change(boy, { action: 'mealCreate' })).kitchen.meals[0]; const candidate = meal.candidates[0];
+  const query = new URLSearchParams({ date: calendarDate(meal.date) });
+  await service.change(boy, { action: 'score', mealId: meal.id, candidateId: candidate.id, score: 5 });
+  assert.equal((await service.calendar(girl, query)).entries.length, 0);
+  await service.change(girl, { action: 'score', mealId: meal.id, candidateId: candidate.id, score: 2 });
+  await service.change(girl, { action: 'score', mealId: meal.id, candidateId: candidate.id, score: 2 });
+  let entries = (await service.calendar(boy, query)).entries; assert.equal(entries.length, 1); assert.deepEqual(entries[0].record.scores, [5, 2]); assert.deepEqual(entries[0].record.ingredients, candidate.dish.ingredients);
+  const another = meal.candidates[1]; await service.change(boy, { action: 'score', mealId: meal.id, candidateId: another.id, score: 0 }); await service.change(girl, { action: 'score', mealId: meal.id, candidateId: another.id, score: 5 });
+  entries = (await service.calendar(girl, query)).entries; assert.equal(entries.length, 2); assert.equal(entries.filter(x => !x.record.passed).length, 1); assert.deepEqual(entries.find(x => !x.record.passed).record.ingredients, another.dish.ingredients);
+  const old = structuredClone(entries.find(x => x.record.passed)); await service.change(boy, { action: 'dishDelete', id: candidate.dish.id });
+  for (let i = 0; i < 32; i++) await service.change(boy, { action: 'mealCreate' });
+  assert.equal((await service.read(boy)).kitchen.meals.length, 30); assert.deepEqual((await service.calendar(boy, query)).entries.find(x => x.record.passed), old);
+  const [other] = await couple(service, auth, '日历隔离厨房测试口令'); assert.equal((await service.calendar(other, query)).entries.length, 0);
+  assert.equal(repo.history.get(boy.kitchenId).size, 2);
+});
+test('旧记录只补入完整评分，不猜日期和缺失食材，重复补入不增加记录', async () => {
+  const { service, auth, repo } = setup(); const [boy] = await couple(service, auth); const k = newKitchen();
+  const dish = k.dishes[0]; k.meals = [{ id: 'old', date: '无法确认的旧日期', candidates: [{ id: 'done', dish, scores: [4, 4] }, { id: 'pending', dish: k.dishes[1], scores: [null, 5] }], rejected: [{ id: 'no', dishId: 'deleted', name: '旧淘汰菜', kind: 'veg', scores: [1, 1] }] }];
+  await service.restore(boy, { format: 'two-person-kitchen-v1', kitchen: k });
+  await repo.seedHistory(boy.kitchenId); await repo.seedHistory(boy.kitchenId);
+  const entries = (await service.calendar(boy, new URLSearchParams({ date: 'unknown' }))).entries;
+  assert.equal(entries.length, 2); assert.equal(entries.find(x => x.record.name === '旧淘汰菜').record.ingredients, null); assert.ok(entries.every(x => x.date === 'unknown'));
+  const month = await service.calendar(boy, new URLSearchParams({ month: '2026-10' })); assert.equal(month.unknownCount, 2); assert.equal(month.days.length, 0);
+  await assert.rejects(service.calendar(boy, new URLSearchParams({ date: '2026-02-30' })), /有效/);
+  await assert.rejects(service.calendar(boy, new URLSearchParams({ date: 'unknown', cursor: '{"rank":1,"id":"恶意内容"}' })), /位置/);
+});
+test('同日分页按轮次排序且没有重复遗漏，备份截止位置不随新记录增长', async () => {
+  const { service, auth, repo } = setup(); const [boy] = await couple(service, auth); const dish = newKitchen().dishes[0];
+  for (let i = 0; i < 110; i++) repo.append(boy.kitchenId, calendarEntries({ meals: [{ id: 'round-' + i, date: '2026/10/10', candidates: [{ id: 'c-' + i, dish, scores: [5, 5] }] }] }), i);
+  const collected = []; let cursor = null;
+  do { const params = new URLSearchParams({ date: '2026-10-10' }); if (cursor) params.set('cursor', JSON.stringify(cursor)); const page = await service.calendar(boy, params); assert.ok(page.entries.length <= 40); collected.push(...page.entries); cursor = page.next; } while (cursor);
+  assert.equal(collected.length, 110); assert.equal(new Set(collected.map(x => x.id)).size, 110); assert.ok(collected.every((x, i) => !i || x.rank <= collected[i - 1].rank));
+  const first = await service.exportCalendar(boy, new URLSearchParams()); assert.equal(first.entries.length, 100); assert.ok(first.next);
+  repo.append(boy.kitchenId, calendarEntries({ meals: [{ id: 'new', date: '2026/10/10', candidates: [{ id: 'new', dish, scores: [5, 5] }] }] }), 120);
+  const last = await service.exportCalendar(boy, new URLSearchParams({ after: first.next, maximum: first.maximum })); assert.equal(last.entries.length, 10); assert.equal(last.next, null);
+});
+test('历史写入失败则回退评分，版本冲突不写历史，连接总会释放', async () => {
+  const repo = Object.create(MysqlKitchenRepository.prototype); const events = []; let affected = 1;
+  const connection = { beginTransaction: async () => events.push('begin'), commit: async () => events.push('commit'), rollback: async () => events.push('rollback'), release: () => events.push('release'), execute: async () => [{ affectedRows: affected }] };
+  repo.pool = { getConnection: async () => connection }; repo.appendHistory = async () => { events.push('archive'); throw new Error('模拟历史保存失败'); };
+  await assert.rejects(repo.save('id', 1, '{}', [{ key: 'key' }]), /保存失败/); assert.deepEqual(events, ['begin', 'archive', 'rollback', 'release']);
+  events.length = 0; affected = 0; assert.equal(await repo.save('id', 1, '{}', []), false); assert.deepEqual(events, ['begin', 'rollback', 'release']);
+});
+test('日历接口校验登录、请求方法和参数，GET不泄露未完成评分，备份恢复严格检查', async t => {
+  const { service, auth } = setup(); const [boy] = await couple(service, auth); const server = createServer(service, auth, []); server.listen(0, '127.0.0.1'); await once(server, 'listening'); t.after(() => new Promise(resolve => server.close(resolve)));
+  const base = 'http://127.0.0.1:' + server.address().port; const header = { Authorization: 'Bearer ' + auth.issue(boy.kitchenId, 0), 'Content-Type': 'application/json' };
+  assert.equal((await fetch(base + '/api/calendar?month=2026-10')).status, 401);
+  assert.equal((await fetch(base + '/api/calendar?month=2026-13', { headers: header })).status, 400);
+  assert.equal((await fetch(base + '/api/calendar?date=2026-02-30', { headers: header })).status, 400);
+  assert.equal((await fetch(base + '/api/calendar?month=2026-10', { method: 'POST', headers: header, body: '{}' })).status, 405);
+  const month = await fetch(base + '/api/calendar?month=2026-10', { headers: header }); assert.equal(month.status, 200); assert.deepEqual(await month.json(), { days: [], unknownCount: 0 });
+  assert.equal((await fetch(base + '/api/calendar/restore', { method: 'POST', headers: header, body: JSON.stringify({ entries: [{ record: { scores: [null, 5] } }] }) })).status, 400);
+  assert.equal((await fetch(base + '/api/calendar/export', { headers: header })).status, 200);
+  assert.equal((await fetch(base + '/api/calendar/restore', { headers: header })).status, 405);
+});
+test('日历恢复拒绝覆盖已有评分，失败回退，成功只追加且厨房版本递增', async () => {
+  const { calendarBackupEntries } = require('../wechat-gateway/calendar.cjs'); const repo = Object.create(MysqlKitchenRepository.prototype); const events = [];
+  const entry = calendarBackupEntries({ entries: [{ mealId: 'old', date: '2026-10-10', dateLabel: '2026/10/10', rank: 1, record: { candidateId: 'c', dishId: 'd', name: '番茄炒蛋', kind: 'veg', ingredients: ['番茄', '鸡蛋'], scores: [4, 4], passed: true } }] })[0]; let conflict = true;
+  const connection = { beginTransaction: async () => events.push('begin'), commit: async () => events.push('commit'), rollback: async () => events.push('rollback'), release: () => events.push('release'), execute: async ({ sql }) => { if (sql.startsWith('SELECT version')) return [[{ version: 3 }]]; if (sql.startsWith('SELECT entry_key')) return [conflict ? [{ entry_key: entry.key, meal_date: entry.date, date_label: entry.dateLabel, record: JSON.stringify({ ...entry.record, scores: [5, 5] }) }] : []]; events.push('update'); return [{ affectedRows: 1 }]; } };
+  repo.pool = { getConnection: async () => connection }; repo.appendHistory = async () => events.push('append');
+  await assert.rejects(repo.restoreCalendar('k', [entry]), e => e.code === 'CALENDAR_CONFLICT'); assert.deepEqual(events, ['begin', 'rollback', 'release']);
+  events.length = 0; conflict = false; assert.deepEqual(await repo.restoreCalendar('k', [entry]), { imported: 1 }); assert.deepEqual(events, ['begin', 'append', 'update', 'commit', 'release']);
+});
+test('日历日期保留轮次日期，备份结束标记缺失或结果伪造被拒绝', async () => {
+  const { calendarQuery, calendarBackupEntries } = require('../wechat-gateway/calendar.cjs'); const { inspect } = require('../wechat-gateway/tools/日历历史备份.cjs'); const fs = require('node:fs/promises'); const os = require('node:os'); const path = require('node:path');
+  assert.equal(calendarDate('2024年2月29日'), '2024-02-29'); assert.equal(calendarDate('2026/2/29'), 'unknown'); assert.equal(calendarQuery(new URLSearchParams({ month: '9999-12' })).end, '9999-12-32');
+  const entry = { mealId: 'm', date: '2026-10-10', dateLabel: '2026/10/10', rank: 1, record: { candidateId: 'c', dishId: 'd', name: '菜', kind: 'veg', ingredients: null, scores: [1, 1], passed: false } };
+  assert.throws(() => calendarBackupEntries({ entries: [{ ...entry, record: { ...entry.record, passed: true } }] }), /评分结果/);
+  const folder = await fs.mkdtemp(path.join(os.tmpdir(), 'calendar-test-')); const file = path.join(folder, 'backup.jsonl');
+  try { const prefix = JSON.stringify({ format: 'two-person-calendar-v1' }) + '\n' + JSON.stringify(entry) + '\n'; await fs.writeFile(file, prefix); await assert.rejects(inspect(file), /未完成/); await fs.appendFile(file, JSON.stringify({ end: true, count: 1 }) + '\n'); assert.equal(await inspect(file), 1); } finally { await fs.rm(folder, { recursive: true }); }
 });

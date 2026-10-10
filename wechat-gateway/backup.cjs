@@ -6,7 +6,7 @@ const dish = z.object({ id: z.string().min(1).max(80), name: text, ingredients: 
 const score = z.number().int().min(0).max(5);
 const candidate = z.object({ id: z.string().min(1).max(80), dish, scores: z.tuple([score.nullable(), score.nullable()]), blocked: z.string().max(100).optional() }).strict();
 const preferences = z.object({ meatCount: z.number().int().min(0).max(6), vegCount: z.number().int().min(0).max(6) }).strict().refine(x => x.meatCount + x.vegCount >= 1 && x.meatCount + x.vegCount <= 6);
-const rejected = z.object({ id: z.string().min(1).max(80), dishId: z.string().min(1).max(80), name: text, kind: z.enum(['meat', 'veg']), scores: z.tuple([score, score]) }).strict();
+const rejected = z.object({ id: z.string().min(1).max(80), dishId: z.string().min(1).max(80), name: text, kind: z.enum(['meat', 'veg']), ingredients: z.array(text).min(1).max(20).optional(), scores: z.tuple([score, score]) }).strict();
 const kitchen = z.object({ mealPreferences: preferences.optional(), pantryCategories: z.array(z.object({ name: text, category: z.enum(ingredientCategoryIds) }).strict()).max(200).optional(), dishes: z.array(dish).max(400), pantry: z.array(text).max(200), shopping: z.array(z.object({ name: text, checked: z.boolean() }).strict()).max(200), meals: z.array(z.object({ id: z.string().min(1).max(80), date: z.string().min(1).max(40), candidates: z.array(candidate).min(1).max(6), fridgeOnly: z.boolean().optional(), rejected: z.array(rejected).max(maxRejectedDishes).optional() }).strict()).max(30) }).strict();
 // 导入只收厨房内容，不带原来的口令、厨房编号或登录票据。
 function validateBackup(value) {

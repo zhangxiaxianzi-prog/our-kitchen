@@ -26,6 +26,8 @@ async function request(path, method, data) {
 module.exports = {
   token, saveToken, clearToken,
   login: (passphrase, role) => request('/api/login', 'POST', { passphrase, role }),
+  // 日历单独查询月份和日期，不把长期历史混进冰箱同步。
+  calendar: query => request('/api/calendar?' + Object.keys(query).filter(key => query[key] !== undefined).map(key => encodeURIComponent(key) + '=' + encodeURIComponent(typeof query[key] === 'object' ? JSON.stringify(query[key]) : query[key])).join('&'), 'GET'),
   read: () => request('/api/kitchen', 'GET'),
   change: input => request('/api/kitchen', 'POST', input)
 };

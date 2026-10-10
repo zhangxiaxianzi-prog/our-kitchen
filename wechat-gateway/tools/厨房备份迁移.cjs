@@ -2,7 +2,6 @@ const { createInterface } = require('node:readline/promises');
 const { Writable } = require('node:stream');
 const fs = require('node:fs/promises');
 const { validateBackup } = require('../backup.cjs');
-const OLD = 'https://our-kitchen-oct09.berryokapi.chatgpt.site';
 const NEW = 'https://springboot-5wzu-325631-12-1311437624.sh.run.tcloudbase.com';
 // 口令在本机输入，输入时不显示，也不写到文件和日志里。
 async function phrase() {
@@ -17,7 +16,7 @@ async function api(origin, path, method, body, token) {
   const headers = { 'Content-Type': 'application/json' };
   if (token) headers.Authorization = 'Bearer ' + token;
   const response = await fetch(origin + path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(20000), redirect: 'error' });
-  if (!response.headers.get('content-type')?.includes('application/json')) throw new Error('接口没有返回厨房数据，已停止迁移；请检查网站访问或服务是否发布');
+  if (!response.headers.get('content-type')?.includes('application/json')) throw new Error('接口没有返回厨房数据，已停止迁移；请检查微信后台是否发布');
   let size = 0; const chunks = [];
   for await (const chunk of response.body) {
     size += chunk.length;
@@ -57,7 +56,7 @@ async function main() {
     if (stat.size > 4 * 1024 * 1024) throw new Error('备份文件过大');
     backup = validateBackup(JSON.parse(await fs.readFile(file, 'utf8')));
   }
-  const origin = operation === '导出' ? OLD : NEW;
+  const origin = NEW;
   const passphrase = await phrase();
   const { token } = await api(origin, '/api/login', 'POST', { passphrase, role: 0 });
   const { token: girlToken } = await api(origin, '/api/login', 'POST', { passphrase, role: 1 });
@@ -69,8 +68,8 @@ async function main() {
     await api(origin, '/api/kitchen/restore', 'POST', { format: 'two-person-kitchen-v1', kitchen: backup.kitchen }, token);
     const current = await readBackup(origin, token, girlToken);
     if (current.hash !== backup.hash) throw new Error('当前厨房和备份内容不同，请停止切换并核对记录');
-    console.info('厨房导入完成，菜单、冰箱、采购清单和晚餐历史已逐项校验一致。');
+    console.info('厨房导入完成，菜单、冰箱、采购清单和最近选菜记录已核对；长期日历需单独备份。');
   }
 }
 if (require.main === module) main().catch(error => { console.error(error.message && !error.code ? error.message : '备份迁移失败，请检查文件和网络'); process.exitCode = 1; });
-module.exports = { api, mergeBackupViews };
+module.exports = { api, phrase, mergeBackupViews };

@@ -2,7 +2,7 @@
   "name": "kitchen-wechat-gateway",
   "version": "1.0.0",
   "private": true,
-  "description": "网站和微信小程序共用的厨房与MySQL服务",
+  "description": "微信小程序共享厨房与MySQL服务",
   "scripts": {
     "build": "node build.cjs",
     "start": "node server.cjs",
