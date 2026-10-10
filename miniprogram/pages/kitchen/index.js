@@ -6,6 +6,7 @@ const { swipeDirection } = require('../../utils/swipe');
 // 当前页面统一管理五个入口，实际修改都发给同一个厨房接口。
 Page({
   data: {
+    accountReady: false, userId: '', administrator: false, unlimited: false, kitchenName: '', newKitchenName: '', kitchens: [], kitchensNext: null, kitchensAfter: '', requestKitchen: '', requests: [], requestsNext: null, invitation: '',
     loggedIn: false, loginRole: 0, role: 0, roleName: '男生', passphrase: '', busy: false, error: '', synced: false,
     tab: 'dinner', tabs: [{ id: 'dinner', label: '今晚吃什么' }, { id: 'fridge', label: '冰箱' }, { id: 'shopping', label: '采购清单' }, { id: 'menu', label: '菜单' }, { id: 'calendar', label: '三餐日历' }],
     scores: [0, 1, 2, 3, 4, 5], pantry: [], shopping: [], boughtCount: 0, dishes: [], visibleDishes: [], suggestions: [],
@@ -17,13 +18,15 @@ Page({
     pantryCategory: 'all', pantrySearch: '', pantrySwipeName: '', pantryRows: [], stockCategories: [], pantryManaging: false, pantrySelected: [],
     pantryOpen: false, pantryFocus: 'search', addCategory: 'all', addSearch: '', addSelected: [], addChoices: [], choiceCategories: [],
     customName: '', customCategoryIndex: 7, classifyIndex: 0,
-    keyboardHeight: 0, sheetHeight: 500, sheetBottom: 0, sheetTarget: '',
+    keyboardHeight: 0, visibleHeight: 600, sheetHeight: 500, sheetBottom: 0, sheetTarget: '',
     pickOpen: false, pickItems: [], pickCandidateId: '', pickMealId: '', pickKind: '', pickSearch: ''
   },
   onLoad() { this._version = 0; this._sessionEpoch = 0; this._visible = false; this._unloaded = false; this._calendarRequest = 0; this.setData({ calendarMonth: calendar.today().slice(0, 7), calendarDate: calendar.today() }); this.paintCalendar(); this.updateSheetSize(0); },
   onShow() {
     this._visible = true; if (this.data.tab === 'calendar') { this.setData({ calendarLoading: false }); this.loadCalendar(this._calendarCursor || null, this.data.calendarPage, this.data.calendarPages); }
     this.updateSheetSize(0);
+    if (api.token() && !api.accountToken()) this.clearSession();
+    this.loadAccount();
     if (api.token()) { this.setData({ loggedIn: true }); this.refresh(); }
     this.scheduleRefresh();
   },
@@ -40,7 +43,8 @@ Page({
     if (!keyboardHeight && refreshBase) this._baseHeight = height;
     this._windowWidth = info.windowWidth || this._windowWidth;
     const visible = Math.max(0, Math.min(height, (this._baseHeight || height) - keyboardHeight));
-    this.setData({ keyboardHeight, sheetHeight: Math.max(0, Math.floor(Math.min((this._baseHeight || height) * .88, visible - 12))), sheetBottom: Math.max(0, height - visible), sheetTarget: '' }, () => {
+    // 冰箱和弹窗共用实际可见高度，安卓已经缩小窗口时不重复扣键盘。
+    this.setData({ keyboardHeight, visibleHeight: visible, sheetHeight: Math.max(0, Math.floor(Math.min((this._baseHeight || height) * .88, visible - 12))), sheetBottom: Math.max(0, height - visible), sheetTarget: '' }, () => {
       // 键盘把中间区域缩小以后，再滚到正在填写的字段，保存按钮留在下面。
       if (!this._unloaded && this.data.editorOpen && this._focusedField) this.setData({ sheetTarget: this._focusedField });
     });
@@ -60,13 +64,15 @@ Page({
     if (!this._visible) return;
     this._timer = setTimeout(async () => {
       if (api.token()) await this.refresh();
+      else if (api.accountToken()) { if (!this.data.accountReady) await this.loadAccount(); else await this.loadKitchens(this.data.kitchensAfter); }
       this.scheduleRefresh();
     }, 8000);
   },
   notice(message) { if (!this._unloaded) wx.showToast({ title: message, icon: 'none', duration: 3000 }); },
   handleError(error) {
     if (this._unloaded) return;
-    if (error.status === 401) this.clearSession();
+    if (error.status === 401 || error.status === 410) this.clearSession();
+    if (error.account && error.status === 401) this.setData({ accountReady: false, userId: '', administrator: false, kitchens: [], requests: [] });
     this.setData({ error: error.message, synced: false });
   },
   // 旧请求晚到时不能盖掉较新的数据，退出后的响应也不能重新登录。
@@ -102,25 +108,88 @@ Page({
   },
   onPassphrase(e) { this.setData({ passphrase: e.detail.value }); },
   chooseRole(e) { this.setData({ loginRole: Number(e.currentTarget.dataset.role) }); },
-  async login() {
-    if (this.data.busy) return;
-    const passphrase = this.data.passphrase.trim();
-    if (passphrase.length < 8 || passphrase.length > 64) return this.notice('共同口令需要8到64个字符');
-    this.setData({ busy: true, error: '' });
+  // 进入过的厨房关系保存在后台，换手机后仍按同一微信账号查自己的列表。
+  async loadAccount() {
+    if (this._accountReading || !api.accountToken()) return;
+    this._accountReading = true; const epoch = this._sessionEpoch;
     try {
-      const result = await api.login(passphrase, this.data.loginRole);
-      if (typeof result.token !== 'string' || !result.token) throw new Error('登录结果不完整，请检查服务');
-      api.saveToken(result.token); this._version = 0; this._sessionEpoch++;
-      this.setData({ passphrase: '', loggedIn: true }); await this.refresh();
-    } catch (error) { this.handleError(error); }
+      const profile = await api.profile();
+      if (this._unloaded || epoch !== this._sessionEpoch) return;
+      this.setData({ accountReady: true, userId: profile.userId, administrator: profile.administrator, unlimited: profile.unlimited });
+      if (!this.data.loggedIn) await this.loadKitchens('');
+    } catch (error) { if (epoch === this._sessionEpoch) this.handleError(error); }
+    finally { this._accountReading = false; }
+  },
+  async loadKitchens(after = '') {
+    if (this._kitchensReading || !api.accountToken()) return;
+    this._kitchensReading = true; const epoch = this._sessionEpoch;
+    try { const result = await api.kitchens(after); if (!this._unloaded && epoch === this._sessionEpoch) this.setData({ kitchens: result.items.map(item => Object.assign({}, item, { lastVisitText: item.lastVisit ? new Date(Date.parse(item.lastVisit) + 8 * 3600000).toISOString().slice(0, 16).replace('T', ' ') : '' })), kitchensNext: result.next, kitchensAfter: after }); }
+    catch (error) { if (epoch === this._sessionEpoch) this.handleError(error); }
+    finally { this._kitchensReading = false; }
+  },
+  // 用同一处等待和错误处理保护账号操作，避免连续点击重复发起创建或审批。
+  async accountAction(action) {
+    if (this.data.busy) return;
+    const epoch = this._sessionEpoch; this.setData({ busy: true, error: '' });
+    try { await action(() => !this._unloaded && epoch === this._sessionEpoch); }
+    catch (error) { if (!this._unloaded && epoch === this._sessionEpoch) this.handleError(error); }
     finally { if (!this._unloaded) this.setData({ busy: false }); }
   },
+  async wechatLogin() {
+    await this.accountAction(async valid => { const profile = await api.wechatLogin(); if (!valid()) return; this.setData({ accountReady: true, userId: profile.userId, administrator: profile.administrator }); await this.loadAccount(); });
+  },
+  onKitchenName(e) { this.setData({ newKitchenName: e.detail.value }); },
+  async createKitchen() {
+    await this.accountAction(async valid => {
+      const result = await api.createKitchen({ name: this.data.newKitchenName.trim(), role: this.data.loginRole }); if (!valid()) return;
+      this.openKitchen(result.token, result.name); this.setData({ invitation: result.invitation, newKitchenName: '' }); await this.refresh();
+    });
+  },
+  openKitchen(token, name) { api.saveToken(token); this._version = 0; this._sessionEpoch++; this.setData({ loggedIn: true, kitchenName: name || '两人厨房', invitation: '', requests: [], requestKitchen: '' }); },
+  async enterKitchen(e) {
+    const id = e.currentTarget.dataset.id; const item = this.data.kitchens.find(x => x.id === id);
+    await this.accountAction(async valid => { const result = await api.enterKitchen(id, this.data.loginRole); if (!valid()) return; this.openKitchen(result.token, item && item.name); await this.refresh(); });
+  },
+  async login() {
+    await this.accountAction(async valid => { const result = await api.joinKitchen(this.data.passphrase.trim()); if (!valid()) return; this.setData({ passphrase: '' }); this.notice(result.joined ? '已经加入，请从我的厨房进入' : '申请已发送，等待创建者同意'); await this.loadKitchens(''); });
+  },
+  async refreshKitchens() { await this.loadAccount(); await this.loadKitchens(''); },
+  async nextKitchens() { if (this.data.kitchensNext) await this.loadKitchens(this.data.kitchensNext); },
+  copyUserId() { wx.setClipboardData({ data: this.data.userId }); },
+  copyInvitation() { if (this.data.invitation) wx.setClipboardData({ data: this.data.invitation }); },
+  async resetInvitation(e) {
+    const id = e.currentTarget.dataset.id;
+    if (!await this.confirm('生成新的加入口令？原口令会失效，已经加入的成员不受影响。')) return;
+    await this.accountAction(async valid => { const result = await api.invitation(id); if (valid()) { this.setData({ invitation: result.invitation }); wx.setClipboardData({ data: result.invitation }); this.notice('新口令已复制'); } });
+  },
+  async showRequests(e) { await this.loadRequests(e.currentTarget.dataset.id, ''); },
+  async loadRequests(id, after) {
+    await this.accountAction(async valid => { const result = await api.requests(id, after); if (valid()) this.setData({ requestKitchen: id, requests: result.items, requestsNext: result.next }); });
+  },
+  async nextRequests() { if (this.data.requestsNext) await this.loadRequests(this.data.requestKitchen, this.data.requestsNext); },
+  closeRequests() { this.setData({ requestKitchen: '', requests: [] }); },
+  async decideRequest(e) {
+    const approved = e.currentTarget.dataset.approved === 'yes'; const userId = e.currentTarget.dataset.user;
+    if (!await this.confirm((approved ? '同意' : '拒绝') + '这个账号加入厨房？')) return;
+    await this.accountAction(async valid => { await api.decide({ id: this.data.requestKitchen, userId, approved }); if (!valid()) return; const result = await api.requests(this.data.requestKitchen, ''); if (valid()) this.setData({ requests: result.items, requestsNext: result.next }); });
+  },
+  // 扫码只批准对应网页的短期登录，不把管理员票据发给小程序。
+  async scanAdminLogin() {
+    await this.accountAction(async valid => {
+      const scan = await new Promise((resolve, reject) => wx.scanCode({ scanType: ['qrCode'], success: resolve, fail: () => reject(new Error('扫码未完成')) }));
+      let input; try { input = JSON.parse(scan.result); } catch (_) { throw new Error('这不是管理网页登录二维码'); }
+      if (input.type !== 'kitchen-admin-login') throw new Error('这不是管理网页登录二维码');
+      if (!valid() || !await this.confirm('允许电脑或浏览器登录白名单管理网页？只确认你自己刚打开的网页。')) return;
+      await api.approveAdmin({ id: input.id, scan: input.scan }); if (valid()) this.notice('已确认，请返回管理网页');
+    });
+  },
+  accountLogout() { if (!this.data.busy) { api.clearAccount(); this.clearSession(); this.setData({ accountReady: false, userId: '', administrator: false, unlimited: false, kitchens: [], requests: [], invitation: '' }); } },
   clearSession() {
     this._calendarRequest++; this._mealDraftDirty = false; this._pantryGesture = null;
     api.clearToken(); this._sessionEpoch++; this._version = 0; this._kitchen = null;
     this.setData({ loggedIn: false, synced: false, pantryOpen: false, pantryManaging: false, pantrySelected: [], addSelected: [], customName: '', pantrySearch: '', pantrySwipeName: '', meatCount: 1, vegCount: 2, mealCount: 3, rejectedRows: [], meal: null, candidates: [], pantry: [], shopping: [], dishes: [], visibleDishes: [],  calendarEntries: [], calendarGroups: [], calendarMarks: [], calendarError: '', calendarLoading: false, calendarNext: null, calendarPages: [], calendarPage: 1, calendarRejected: [], unknownCount: 0, calendarDate: calendar.today(), calendarMonth: calendar.today().slice(0, 7), editorOpen: false, pickOpen: false, passphrase: '' }); this.paintCalendar();
   },
-  logout() { if (!this.data.busy) { this.clearSession(); this.setData({ error: '' }); } },
+  logout() { if (!this.data.busy) { this.clearSession(); this.setData({ error: '', invitation: '', requestKitchen: '' }); this.loadAccount(); } },
   selectTab(e) { this._calendarRequest++; this.setData({ tab: e.currentTarget.dataset.tab, ingredient: '', pantrySwipeName: '', calendarLoading: false }); if (this.data.tab === 'calendar') this.loadCalendar(); },
   // 数量是下一轮的选择，刷新和本轮评分不会清掉用户正在调整的数字。
   onMealCount(e) {

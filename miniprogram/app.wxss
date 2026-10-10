@@ -3,6 +3,11 @@ page { background:#f7f5ef; color:#28382d; font-family:system-ui,-apple-system,sa
 view,text,button,input,textarea,scroll-view { box-sizing:border-box; }
 text { overflow-wrap:break-word; word-break:break-word; }
 button { margin:0; min-height:44px; font-size:28rpx; font-weight:400; line-height:1.5; border-radius:16rpx; white-space:normal; }
+/* 按钮达到最小点击高度以后，把多出来的上下空间均分，文字和加载图标一起居中。 */
+.page button.primary,.page button.secondary,.page button.link,.page button.role,
+.page button.score,.page button.chip,.page button.nav-button,.page button.calendar-arrow {
+  display:flex; align-items:center; justify-content:center; text-align:center;
+}
 /* 微信默认按钮会居中并占固定宽度，这里按实际操作区域指定宽度。 */
 .page button.primary,.page button.secondary,.page button.link,.page button.role,
 .page button.score,.page button.chip,.page button.nav-button,.page button.pick-item { width:auto; margin:0; }
@@ -102,7 +107,7 @@ textarea { height:180rpx; min-height:80px; line-height:1.6; }
 .fridge-search button,.custom-add-row button { flex-shrink:0; padding:16rpx 18rpx; }
 .fridge-note { margin:14rpx 0; }
 .ingredient-browser { display:flex; min-height:0; overflow:hidden; border:1rpx solid #e2e5da; border-radius:18rpx; background:#fffefa; }
-.fridge-browser { height:50vh; min-height:240px; }
+.fridge-browser { flex:1; height:0; min-height:0; }
 .category-sidebar { width:140rpx; flex-shrink:0; height:100%; background:#efefe6; }
 .page button.category-button { width:100%; margin:0; display:flex; flex-direction:column; justify-content:center; align-items:center; min-height:48px; padding:12rpx 6rpx; background:transparent; border-radius:0; font-size:27rpx; color:#64765a; }
 .category-button.active-category { background:#fffefa!important; color:#3c5944; border-left:6rpx solid #3c5944; font-weight:600; }
@@ -165,7 +170,7 @@ textarea { height:180rpx; min-height:80px; line-height:1.6; }
 .calendar-week,.calendar-cell { width:14.285714%; box-sizing:border-box; text-align:center; }
 .calendar-week { color:#849179; font-size:24rpx; padding:2rpx 0 6rpx; }
 .calendar-cell { padding:0 2rpx; min-height:44px; }
-.page button.calendar-day { width:100%; min-height:44px; margin:0; padding:2px 0; border:0; border-radius:12rpx; background:transparent; color:#3c5944; font-size:30rpx; line-height:1.5; display:flex; flex-direction:column; align-items:center; }
+.page button.calendar-day { width:100%; min-height:44px; margin:0; padding:2px 0; border:0; border-radius:12rpx; background:transparent; color:#3c5944; font-size:30rpx; line-height:1.5; display:flex; flex-direction:column; align-items:center; justify-content:center; }
 .page button.calendar-today { box-shadow:inset 0 0 0 2rpx #a3b08e; }
 .page button.calendar-selected { background:#3c5944; color:#fffefa; }
 .calendar-dot { width:6rpx; height:6rpx; margin-top:0; border-radius:50%; background:transparent; }
@@ -213,3 +218,22 @@ textarea { height:180rpx; min-height:80px; line-height:1.6; }
 @media (prefers-reduced-motion:reduce) {
   .page button.pantry-swipe-front { transition:none; }
 }
+
+/* 冰箱只让分类和食材滚动；标题、搜索和底栏先占位，剩下的高度全部留给列表。 */
+.fridge-page { display:flex; flex-direction:column; padding-bottom:0; overflow:hidden; }
+.fridge-page > .top,.fridge-page > .sync,.fridge-page > .error { flex-shrink:0; }
+.fridge-content { display:flex; flex-direction:column; flex:1; min-height:0; padding-bottom:16rpx; }
+.fridge-content > .fridge-heading,.fridge-content > .fridge-search,.fridge-content > .fridge-note { flex-shrink:0; }
+/* 底栏在冰箱页实际占据空间，按钮换行和手机底部手势区都从列表高度中扣除。 */
+.fridge-page .bottom-nav,.fridge-page .fridge-manage-bar { position:static; flex-shrink:0; margin:0 -24rpx; }
+.fridge-page .fridge-manage-bar { margin-top:16rpx; margin-bottom:-16rpx; }
+@media (max-width:360px) {
+  .fridge-page .bottom-nav,.fridge-page .fridge-manage-bar { margin-left:-20rpx; margin-right:-20rpx; }
+}
+
+/* 厨房名称和账号标识较长时换行，不挤掉进入及审批按钮。 */
+.kitchen-row { padding: 20rpx 0; border-bottom: 1rpx solid #e2e5da; }
+.kitchen-row .title { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.account-id { display: block; overflow-wrap: anywhere; font-size: 24rpx; margin-bottom: 12rpx; }
+.account-tools { justify-content: space-between; flex-wrap: wrap; }
+.login .card input { margin-bottom: 16rpx; }

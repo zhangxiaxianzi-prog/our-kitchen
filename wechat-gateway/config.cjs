@@ -11,7 +11,14 @@ function configuration(env = process.env) {
     const url = new URL(origin);
     if (url.protocol !== 'https:' || url.origin !== origin) throw new Error('允许的请求来源必须填写完整的HTTPS域名');
   }
+  const adminOrigin = env.ADMIN_WEB_ORIGIN || 'https://springboot-5wzu-325631-12-1311437624.sh.run.tcloudbase.com';
+  const adminUrl = new URL(adminOrigin);
+  if (adminUrl.protocol !== 'https:' || adminUrl.origin !== adminOrigin) throw new Error('管理网页地址必须填写完整的HTTPS域名');
+  const administrators = (env.KITCHEN_ADMIN_OPENIDS || '').split(',').map(x => x.trim()).filter(Boolean);
+  if (administrators.some(x => !/^[A-Za-z0-9_-]{10,64}$/.test(x))) throw new Error('管理员账号标识不正确');
+  if (!origins.includes(adminOrigin)) origins.push(adminOrigin);
   return { port: listenPort, secret: env.KITCHEN_SESSION_SECRET, origins,
+    adminOrigin, administrators, appId: env.WECHAT_APP_ID || 'wxd3ad251e8ea72453', appSecret: env.WECHAT_APP_SECRET || '',
     database: { host: env.DB_HOST, port, database: env.DB_NAME, user: env.DB_USER, password: env.DB_PASSWORD,
       charset: 'utf8mb4', connectionLimit: 5, maxIdle: 5, idleTimeout: 60000,
       waitForConnections: true, queueLimit: 20, connectTimeout: 5000,

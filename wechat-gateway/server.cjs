@@ -1,7 +1,6 @@
 const http = require('node:http');
 const { KitchenError, KitchenService } = require('./service.cjs');
 const { configuration } = require('./config.cjs');
-const { sessions } = require('./session.cjs');
 const { MysqlKitchenRepository } = require('./repository.cjs');
 // 请求超过长度限制就停止接收，备份导入也不能无限占用服务内存。
 function readBody(request, maximum) {
@@ -23,7 +22,8 @@ function readBody(request, maximum) {
   });
 }
 // 身份只从签名票据读取，不能靠提交role字段替另一人评分。
-function createServer(service, auth, origins, logger = console) {
+function createServer(service, auth, origins, logger = console, accounts = null, adminOrigin = '') {
+  const accountRoutes = accounts ? require('./account-http.cjs').accountHttp(accounts, adminOrigin, readBody) : null;
   let active = 0; let restoring = false;
   return http.createServer(async (request, response) => {
     response.setHeader('Cache-Control', 'no-store');
@@ -48,10 +48,13 @@ function createServer(service, auth, origins, logger = console) {
     try {
       if (path === '/health' && request.method === 'GET') return reply({ ok: true });
       if (path === '/ready' && request.method === 'GET') { await service.repository.ready(); return reply({ ok: true }); }
+      if (accounts && path === '/api/login') return reply({ error: '旧口令入口已经关闭，请更新小程序并微信登录' }, 410);
+      if (accountRoutes && await accountRoutes(request, response, url, reply)) return;
       if (!['/api/login', '/api/kitchen', '/api/kitchen/restore', '/api/calendar', '/api/calendar/export', '/api/calendar/restore'].includes(path)) return reply({ error: '没有这个厨房接口' }, 404);
       if (!['GET', 'POST'].includes(request.method) || (path === '/api/login' || path === '/api/kitchen/restore' || path === '/api/calendar/restore') && request.method !== 'POST' || (path === '/api/calendar' || path === '/api/calendar/export') && request.method !== 'GET') return reply({ error: '这个接口不支持该操作方式' }, 405);
       const session = path === '/api/login' ? null : auth.read(request.headers.authorization);
-      if (path !== '/api/login' && !session) return reply({ error: '请重新输入共同口令登录' }, 401);
+      if (path !== '/api/login' && !session) return reply({ error: accounts ? '请微信登录并重新进入厨房' : '请重新输入共同口令登录' }, 401);
+      if (accounts) await accounts.requireMembership(session);
       if (path === '/api/calendar') return reply(await service.calendar(session, url.searchParams));
       if (path === '/api/calendar/export') return reply(await service.exportCalendar(session, url.searchParams));
       if (request.method === 'GET') return reply(await service.read(session));
@@ -76,7 +79,15 @@ async function start() {
   const config = configuration(); const repository = new MysqlKitchenRepository(config.database);
   try {
     await repository.initialize();
-    const auth = sessions(config.secret); const server = createServer(new KitchenService(repository, auth), auth, config.origins);
+    const { accountSessions } = require('./account-session.cjs');
+    const { AccountRepository } = require('./account-repository.cjs');
+    const { AccountService, WechatIdentity } = require('./account-service.cjs');
+    const auth = accountSessions(config.secret); const accountRepository = new AccountRepository(repository);
+    await accountRepository.initialize();
+    // 第一次配置管理员时为本人加入白名单；已经停用的名单不因重启而恢复。
+    for (const userId of config.administrators) await accountRepository.execute('INSERT INTO kitchen_whitelist (user_id,enabled,note) VALUES (?,1,?) ON DUPLICATE KEY UPDATE user_id = user_id', [userId, '首次配置的管理员账号']);
+    const accounts = new AccountService(accountRepository, auth, new WechatIdentity(config.appId, config.appSecret), config.administrators);
+    const server = createServer(new KitchenService(repository, auth), auth, config.origins, console, accounts, config.adminOrigin);
     server.requestTimeout = 15000; server.headersTimeout = 10000; server.maxRequestsPerSocket = 100;
     server.listen(config.port, '0.0.0.0', () => console.info('两人厨房共享服务已启动'));
     // 先停止接新请求，再释放数据库连接，扩容和发布时不保留失效连接。

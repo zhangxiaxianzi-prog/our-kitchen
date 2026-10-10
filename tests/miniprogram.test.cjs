@@ -46,9 +46,11 @@ test('手机键盘不重复抬弹窗，收起后恢复高度，卸载后不更�
   page.onLoad(); page.data.editorOpen = true; page._focusedField = 'draft-ingredients-field';
   page.onKeyboardChange({ detail: { height: 300 } });
   assert.equal(page.data.sheetBottom, 300); assert.equal(page.data.sheetHeight, 288);
+  assert.equal(page.data.visibleHeight, 300);
   assert.equal(page.data.sheetTarget, 'draft-ingredients-field');
   height = 300; page.onResize({ size: { windowHeight: 300, windowWidth: 375 } });
   assert.equal(page.data.sheetBottom, 0); assert.equal(page.data.sheetHeight, 288);
+  assert.equal(page.data.visibleHeight, 300);
   // 再检查窗口先变小、键盘高度后到达的顺序。
   height = 600; page.onKeyboardChange({ detail: { height: 0 } });
   height = 300; page.onResize({ size: { windowHeight: 300, windowWidth: 375 } });
@@ -58,6 +60,12 @@ test('手机键盘不重复抬弹窗，收起后恢复高度，卸载后不更�
   page.onKeyboardChange({ detail: { height: 0 } });
   height = 600; page.onResize({ size: { windowHeight: 600, windowWidth: 375 } });
   assert.equal(page.data.sheetHeight, 528);
+  assert.equal(page.data.visibleHeight, 600);
+  // 同宽度手机窗口变短后，冰箱使用新高度，不继续占原来的长屏空间。
+  height = 480; page.onResize({ size: { windowHeight: 480, windowWidth: 375 } });
+  assert.equal(page.data.visibleHeight, 480);
+  height = 600; page.onResize({ size: { windowHeight: 600, windowWidth: 375 } });
+  assert.equal(page.data.visibleHeight, 600);
   page.closeEditor(); assert.equal(page.data.editorOpen, false); assert.equal(hidden.length, 1);
   page.onUnload(); page.onKeyboardChange({ detail: { height: 300 } });
   assert.equal(page.data.keyboardHeight, 0);
@@ -153,4 +161,23 @@ test('日历切月份、退出和请求失败不会覆盖新日期或冰箱，�
   page.calendarPreviousPage(); assert.equal(pending[5].query.month, month); pending[5].resolve({ days: [], unknownCount: 0 }); await new Promise(resolve => setImmediate(resolve)); assert.equal(pending[6].query.cursor, undefined); pending[6].resolve({ entries: [entry], next: null }); await new Promise(resolve => setImmediate(resolve)); assert.equal(page.data.calendarPage, 1);
   fail = true; await page.loadCalendar(); assert.match(page.data.calendarError, /日历故障/); assert.equal(page.data.pantry[0], '鸡蛋');
   fail = false; const late = page.loadCalendar(); page.clearSession(); pending[7].resolve({ days: [], unknownCount: 99 }); await late; assert.equal(page.data.unknownCount, 0); assert.equal(page.data.loggedIn, false);
+});
+
+// 账号票据与厨房票据分开，回到厨房列表不会丢掉微信登录。
+test('微信登录只提交临时凭证，账号和厨房票据分别保存，账号过期会一起退出', async () => {
+  const storage = new Map(); const calls = [];
+  global.wx = {
+    getStorageSync: key => storage.get(key), setStorageSync: (key, value) => storage.set(key, value), removeStorageSync: key => storage.delete(key),
+    login: input => input.success({ code: 'wechat-temporary-code' }),
+    cloud: { callContainer: async input => { calls.push(input); return calls.length === 1 ? { statusCode: 200, data: { token: 'account-token', userId: 'openid_test_user', administrator: false } } : calls.length === 4 ? { statusCode: 401, data: { error: '请重新微信登录' } } : { statusCode: 200, data: {} }; } }
+  };
+  const api = require('../miniprogram/utils/api');
+  await api.wechatLogin(); api.saveToken('kitchen-token');
+  await api.profile(); await api.read();
+  assert.deepEqual(calls[0].data, { code: 'wechat-temporary-code' });
+  assert.equal(calls[1].header.Authorization, 'Bearer account-token');
+  assert.equal(calls[2].header.Authorization, 'Bearer kitchen-token');
+  api.clearToken(); assert.equal(api.accountToken(), 'account-token');
+  await assert.rejects(api.profile(), error => error.account && error.status === 401);
+  assert.equal(storage.size, 0);
 });

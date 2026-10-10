@@ -10,7 +10,8 @@ FROM node:22-alpine
 WORKDIR /app
 COPY --from=build --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/dist ./dist
-COPY --chown=node:node package.json server.cjs config.cjs session.cjs repository.cjs service.cjs backup.cjs calendar.cjs ./
+COPY --chown=node:node package.json server.cjs config.cjs session.cjs repository.cjs service.cjs backup.cjs calendar.cjs account-session.cjs account-repository.cjs account-service.cjs permission-cache.cjs account-http.cjs ./
+COPY --chown=node:node admin ./admin
 USER node
 ENV NODE_ENV=production PORT=8080
 EXPOSE 8080

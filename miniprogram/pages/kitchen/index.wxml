@@ -1,15 +1,25 @@
-<view class="page {{!loggedIn ? 'login-page' : ''}}">
+<view class="page {{!loggedIn ? 'login-page' : ''}} {{loggedIn && tab === 'fridge' ? 'fridge-page' : ''}}" style="{{loggedIn && tab === 'fridge' ? 'height:' + visibleHeight + 'px;' : ''}}">
   <view wx:if="{{!loggedIn}}" class="login">
     <text class="headline">两人厨房</text><text class="description">一起选菜，一起评分。</text>
-    <view class="card login-card"><view class="title">进入厨房</view>
-      <view class="label">共同口令</view><input bindkeyboardheightchange="onKeyboardChange" password maxlength="64" value="{{passphrase}}" bindinput="onPassphrase" placeholder="8到64个字符，区分大小写" confirm-type="go" bindconfirm="login" />
-      <view class="label">选择身份</view><view class="row"><button class="role {{loginRole === 0 ? 'chosen' : ''}}" data-role="0" bindtap="chooseRole">男生</button><button class="role {{loginRole === 1 ? 'chosen' : ''}}" data-role="1" bindtap="chooseRole">女生</button></view>
-      <view wx:if="{{error}}" class="error">{{error}}</view><button class="primary full" loading="{{busy}}" disabled="{{busy}}" bindtap="login">创建 / 进入厨房</button>
-      <text class="note">两人使用同一口令。首次使用会创建厨房，口令不同会进入另一厨房；知道口令即可切换身份。</text>
-    </view>
+    <view wx:if="{{error}}" class="error">{{error}}</view>
+    <view wx:if="{{!accountReady}}" class="card login-card"><view class="title">微信登录</view><button class="primary full" loading="{{busy}}" disabled="{{busy}}" bindtap="wechatLogin">微信登录</button></view>
+    <block wx:else>
+      <view class="row account-tools"><button class="link" bindtap="copyUserId">复制我的账号标识</button><button class="link" disabled="{{busy}}" bindtap="accountLogout">退出微信登录</button></view>
+      <button wx:if="{{administrator}}" class="secondary full" disabled="{{busy}}" bindtap="scanAdminLogin">扫描登录管理网页</button>
+      <view class="card"><view class="title">进入时使用的身份</view><view class="row"><button class="role {{loginRole === 0 ? 'chosen' : ''}}" data-role="0" bindtap="chooseRole">男生</button><button class="role {{loginRole === 1 ? 'chosen' : ''}}" data-role="1" bindtap="chooseRole">女生</button></view></view>
+      <view class="card"><view class="dish-top"><view class="title">我的厨房</view><button class="link" disabled="{{busy}}" bindtap="refreshKitchens">刷新</button></view>
+        <view wx:if="{{!kitchens.length}}" class="empty">还没有加入厨房。可以创建，或输入口令申请加入。</view>
+        <view wx:for="{{kitchens}}" wx:key="id" class="kitchen-row"><view class="dish-top"><text class="title">{{item.name}}</text><button class="primary" disabled="{{busy}}" data-id="{{item.id}}" bindtap="enterKitchen">进入</button></view><text wx:if="{{item.lastVisitText}}" class="small">最近访问：{{item.lastVisitText}}</text><view wx:if="{{item.owner}}" class="row"><button class="link" disabled="{{busy}}" data-id="{{item.id}}" bindtap="showRequests">加入申请</button><button class="link" disabled="{{busy}}" data-id="{{item.id}}" bindtap="resetInvitation">生成加入口令</button></view></view>
+        <view class="row"><button wx:if="{{kitchensAfter}}" class="secondary" bindtap="refreshKitchens">回到第一页</button><button wx:if="{{kitchensNext}}" class="secondary" bindtap="nextKitchens">下一页</button></view>
+      </view>
+      <view wx:if="{{requestKitchen}}" class="card"><view class="dish-top"><view class="title">加入申请</view><button class="link" bindtap="closeRequests">关闭</button></view><view wx:if="{{!requests.length}}" class="empty">暂无待处理申请</view><view wx:for="{{requests}}" wx:key="userId" class="kitchen-row"><text selectable class="account-id">{{item.userId}}</text><view class="row"><button class="primary" disabled="{{busy}}" data-user="{{item.userId}}" data-approved="yes" bindtap="decideRequest">同意</button><button class="secondary" disabled="{{busy}}" data-user="{{item.userId}}" data-approved="no" bindtap="decideRequest">拒绝</button></view></view><button wx:if="{{requestsNext}}" class="secondary full" bindtap="nextRequests">下一页申请</button></view>
+      <view class="card"><view class="title">申请加入厨房</view><input maxlength="64" value="{{passphrase}}" bindinput="onPassphrase" placeholder="粘贴创建者分享的口令" confirm-type="go" bindconfirm="login"/><button class="secondary full" loading="{{busy}}" disabled="{{busy}}" bindtap="login">发送加入申请</button></view>
+      <view class="card"><view class="title">创建新厨房</view><input maxlength="40" value="{{newKitchenName}}" bindinput="onKitchenName" placeholder="厨房名称"/><button class="primary full" loading="{{busy}}" disabled="{{busy || !newKitchenName}}" bindtap="createKitchen">创建厨房</button><text class="small">{{unlimited ? '白名单账号不受厨房数量和每日创建次数限制' : '最多创建3个厨房，每天最多创建1个'}}</text></view>
+    </block>
   </view>
   <block wx:else>
-    <view class="top"><text>两人厨房</text><button class="link" disabled="{{busy}}" bindtap="logout">{{roleName}} · 切换身份</button></view>
+    <view class="top"><text>{{kitchenName || "两人厨房"}}</text><button class="link" disabled="{{busy}}" bindtap="logout">{{roleName}} · 切换厨房 / 身份</button></view>
+    <view wx:if="{{invitation}}" class="card"><view class="title">加入口令已生成</view><text class="small">分享给另一位，收到申请后在“我的厨房”中同意。</text><button class="secondary full" bindtap="copyInvitation">复制加入口令</button></view>
     <view wx:if="{{!synced}}" class="sync">正在连接厨房…</view><view wx:if="{{error}}" class="error">{{error}}</view>
     <block wx:if="{{tab === 'dinner'}}">
       <text class="headline">今晚吃什么？</text>
@@ -59,6 +69,7 @@
       </block>
     </block>
     <block wx:elif="{{tab === 'fridge'}}">
+      <view class="fridge-content">
       <view class="fridge-heading"><view><view class="headline">冰箱</view><text class="small">{{pantry.length}} 种食材</text></view><button class="primary" disabled="{{busy || !synced}}" bindtap="openPantryAdd">添加食材</button></view>
       <view class="fridge-search"><input bindkeyboardheightchange="onKeyboardChange" value="{{pantrySearch}}" bindinput="onPantrySearch" placeholder="搜索冰箱里的食材" /><button class="secondary" disabled="{{busy || !pantry.length}}" bindtap="togglePantryManage">{{pantryManaging ? '完成' : '管理'}}</button></view>
       <text class="note fridge-note">{{pantryManaging ? '已选食材可移除或改分类，每次最多20种。' : '左滑移除食材'}}</text>
@@ -70,6 +81,7 @@
         </scroll-view>
       </view>
       <view wx:if="{{pantryManaging && !keyboardHeight && !pantryOpen}}" class="fridge-manage-bar"><text class="small">已选 {{pantrySelected.length}} 种</text><view class="row"><picker range="{{customCategories}}" range-key="label" value="{{classifyIndex}}" disabled="{{busy || !pantrySelected.length}}" bindchange="changePantryCategory"><view class="secondary manage-category {{!pantrySelected.length ? 'muted-control' : ''}}">修改分类</view></picker><button class="primary" disabled="{{busy || !pantrySelected.length}}" bindtap="removePantrySelected">移除所选</button></view></view>
+      </view>
     </block>
     <block wx:elif="{{tab === 'shopping'}}">
       <view class="headline">采购清单</view>
