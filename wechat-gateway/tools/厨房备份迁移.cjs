@@ -28,6 +28,25 @@ async function api(origin, path, method, body, token) {
   if (!response.ok) throw new Error(result.error || '厨房暂时无法访问');
   return result;
 }
+// 普通接口隐藏未公开分数；备份用共同口令分别读取两人的自己的分数，再合并。
+function mergeBackupViews(boy, girl) {
+  if (boy.role !== 0 || girl.role !== 1 || boy.version !== girl.version) throw new Error('厨房在备份期间发生变化，请停止操作后重试');
+  const kitchen = structuredClone(boy.kitchen);
+  for (const meal of kitchen.meals) for (const candidate of meal.candidates) {
+    const other = girl.kitchen.meals.find(x => x.id === meal.id)?.candidates.find(x => x.id === candidate.id);
+    if (!other) throw new Error('两次读取的候选菜不同，已停止备份');
+    candidate.scores[1] = other.scores[1]; delete candidate.partnerRated;
+  }
+  return validateBackup({ format: 'two-person-kitchen-v1', kitchen });
+}
+// 最多重新读取三次，不在两个人持续操作时无限等待一份稳定记录。
+async function readBackup(origin, boyToken, girlToken) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const views = await Promise.all([api(origin, '/api/kitchen', 'GET', undefined, boyToken), api(origin, '/api/kitchen', 'GET', undefined, girlToken)]);
+    if (views[0].version === views[1].version) return mergeBackupViews(...views);
+  }
+  throw new Error('厨房在备份期间持续变化，请停止操作后重试');
+}
 async function main() {
   const [operation, file] = process.argv.slice(2);
   if (!['导出', '导入'].includes(operation) || !file) throw new Error('用法：node tools/厨房备份迁移.cjs 导出或导入 完整备份路径');
@@ -39,18 +58,19 @@ async function main() {
     backup = validateBackup(JSON.parse(await fs.readFile(file, 'utf8')));
   }
   const origin = operation === '导出' ? OLD : NEW;
-  const { token } = await api(origin, '/api/login', 'POST', { passphrase: await phrase(), role: 0 });
+  const passphrase = await phrase();
+  const { token } = await api(origin, '/api/login', 'POST', { passphrase, role: 0 });
+  const { token: girlToken } = await api(origin, '/api/login', 'POST', { passphrase, role: 1 });
   if (operation === '导出') {
-    const data = await api(origin, '/api/kitchen', 'GET', undefined, token);
-    const checked = validateBackup({ format: 'two-person-kitchen-v1', kitchen: data.kitchen });
+    const checked = await readBackup(origin, token, girlToken);
     await fs.writeFile(file, JSON.stringify({ format: 'two-person-kitchen-v1', kitchen: checked.kitchen }, null, 2), { mode: 0o600, flag: 'wx' });
     console.info('厨房备份已保存；文件已存在时不会覆盖。');
   } else {
-    const data = await api(origin, '/api/kitchen/restore', 'POST', { format: 'two-person-kitchen-v1', kitchen: backup.kitchen }, token);
-    const current = validateBackup({ format: 'two-person-kitchen-v1', kitchen: data.kitchen });
+    await api(origin, '/api/kitchen/restore', 'POST', { format: 'two-person-kitchen-v1', kitchen: backup.kitchen }, token);
+    const current = await readBackup(origin, token, girlToken);
     if (current.hash !== backup.hash) throw new Error('当前厨房和备份内容不同，请停止切换并核对记录');
     console.info('厨房导入完成，菜单、冰箱、采购清单和晚餐历史已逐项校验一致。');
   }
 }
 if (require.main === module) main().catch(error => { console.error(error.message && !error.code ? error.message : '备份迁移失败，请检查文件和网络'); process.exitCode = 1; });
-module.exports = { api };
+module.exports = { api, mergeBackupViews };

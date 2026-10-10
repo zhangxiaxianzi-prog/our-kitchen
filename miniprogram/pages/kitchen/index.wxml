@@ -1,10 +1,9 @@
-<view class="page">
+<view class="page {{!loggedIn ? 'login-page' : ''}}">
   <view wx:if="{{!loggedIn}}" class="login">
-    <text class="eyebrow">两人厨房</text><text class="headline">少一点纠结，
-一起吃顿好饭。</text>
+    <text class="eyebrow">两人厨房</text><text class="headline">一起决定，今晚吃什么。</text>
     <text class="description">网站与小程序共用同一个厨房。</text>
     <view class="card login-card"><view class="title">进入我们的厨房</view><text class="description">两个人输入完全相同的共同口令。</text>
-      <view class="label">共同口令</view><input password maxlength="64" value="{{passphrase}}" bindinput="onPassphrase" placeholder="8到64个字符，区分大小写" confirm-type="go" bindconfirm="login" />
+      <view class="label">共同口令</view><input bindkeyboardheightchange="onKeyboardChange" password maxlength="64" value="{{passphrase}}" bindinput="onPassphrase" placeholder="8到64个字符，区分大小写" confirm-type="go" bindconfirm="login" />
       <view class="label">这次以谁的身份进入</view><view class="row"><button class="role {{loginRole === 0 ? 'chosen' : ''}}" data-role="0" bindtap="chooseRole">男生</button><button class="role {{loginRole === 1 ? 'chosen' : ''}}" data-role="1" bindtap="chooseRole">女生</button></view>
       <view wx:if="{{error}}" class="error">{{error}}</view><button class="primary full" loading="{{busy}}" disabled="{{busy}}" bindtap="login">创建 / 进入厨房</button>
       <text class="note">首次使用会创建厨房。输错口令会打开另一份厨房，请核对口令。知道口令的人可以选择任一身份。</text>
@@ -14,34 +13,63 @@
     <view class="top"><text>两人厨房</text><button class="link" disabled="{{busy}}" bindtap="logout">{{roleName}} · 切换身份</button></view>
     <view class="sync">{{synced ? '共享数据已同步 · 下拉可刷新' : '正在连接共享厨房'}}</view><view wx:if="{{error}}" class="error">{{error}}</view>
     <block wx:if="{{tab === 'dinner'}}">
-      <view class="eyebrow">今晚的餐桌</view><text class="headline">今晚吃什么，
-我们一起决定。</text><text class="description">默认一荤两素，每人0到5分，合计至少7分入选。</text>
-      <button class="primary full" disabled="{{busy || !synced}}" loading="{{busy}}" bindtap="createMeal">{{meal ? '重新搭配三道菜' : '帮我们搭配三道菜'}}</button>
+      <view class="eyebrow">今晚的餐桌</view><text class="headline">今晚吃什么？</text><text class="description">默认一荤两素，可调整 · 每人0–5分 · 合计7分入选</text>
+      <view class="meal-counts"><picker range="{{countOptions}}" value="{{meatCount}}" data-field="meatCount" disabled="{{busy}}" bindchange="onMealCount"><view class="count-choice">荤菜 {{meatCount}} 道</view></picker><picker range="{{countOptions}}" value="{{vegCount}}" data-field="vegCount" disabled="{{busy}}" bindchange="onMealCount"><view class="count-choice">素菜 {{vegCount}} 道</view></picker><text class="small">共 {{meatCount + vegCount}} 道</text></view>
+      <text class="small">合计1～6道；调整数量和食材限制用于下一轮。</text>
+      <button class="primary full" disabled="{{busy || !synced}}" loading="{{busy}}" bindtap="createMeal">{{meal ? '开始新一轮搭配' : '帮我们搭配'}}（{{meatCount + vegCount}}道）</button>
       <view class="switch-row"><text>只用冰箱已有食材</text><switch color="#3c5944" checked="{{fridgeOnly}}" bindchange="setFridgeOnly" /></view>
-      <view class="section-title">今晚的候选菜 <text class="small">已入选 {{passedCount}} / 3</text></view>
+      <view class="section-title">今晚的候选菜 <text class="small">已入选 {{passedCount}} / {{mealCount}}</text></view>
       <view wx:if="{{!meal}}" class="empty">还没有开始选菜。先添加冰箱食材，或点击上方搭配按钮。</view>
       <view wx:for="{{candidates}}" wx:key="id" wx:for-item="candidate" class="card dish-card">
         <view class="dish-top"><text class="kind">{{candidate.dish.kind === 'meat' ? '荤菜' : '素菜'}}</text><text class="badge {{candidate.passed ? 'passed' : ''}}">{{candidate.verdict}}</text></view>
         <view class="dish-name">{{candidate.dish.name}}</view><text class="description">{{candidate.ingredientsText}}</text><view class="availability">{{candidate.availability}}</view>
         <view class="rating-label">我想吃的程度 <text>{{candidate.ownText}}</text></view>
-        <view class="scores"><button wx:for="{{scores}}" wx:key="*this" wx:for-item="score" class="score {{candidate.ownScore === score ? 'chosen' : ''}}" data-id="{{candidate.id}}" data-score="{{score}}" disabled="{{busy}}" bindtap="score">{{score}}</button></view>
+        <view class="scores"><button wx:for="{{scores}}" wx:key="*this" wx:for-item="score" class="score {{candidate.ownScore === score ? 'chosen' : ''}}" data-id="{{candidate.id}}" data-score="{{score}}" disabled="{{busy || candidate.complete}}" bindtap="score">{{score}}</button></view>
         <view class="rating-label small"><text>另一位：{{candidate.partnerText}}</text><text>{{candidate.totalText}}</text></view>
-        <view class="card-footer"><text class="small">换菜后重新评分</text><view class="row"><button class="link" disabled="{{busy}}" data-id="{{candidate.id}}" bindtap="replace">换一道</button><button class="link" disabled="{{busy}}" data-id="{{candidate.id}}" bindtap="openPick">自选</button></view></view>
+        <text wx:if="{{candidate.blocked}}" class="note">{{candidate.blocked}}</text>
+        <view class="card-footer"><text class="small">低于7分自动换菜，新菜重新评分</text><view class="row"><button class="link" disabled="{{busy}}" data-id="{{candidate.id}}" bindtap="replace">换一道</button><button class="link" disabled="{{busy}}" data-id="{{candidate.id}}" bindtap="openPick">自选</button></view></view>
       </view>
+      <view wx:if="{{rejectedRows.length}}" class="card"><view class="title">本轮已淘汰的菜</view><text class="small">低于7分自动换同类菜，本轮不再抽到。</text><view wx:for="{{rejectedRows}}" wx:key="id" class="history-row">{{item.name}} · 男生 {{item.boyScore}} 分，女生 {{item.girlScore}} 分 · 合计 {{item.total}} 分</view></view>
       <view class="card"><view class="title">选好了，再去买菜</view><text class="description">只合并入选菜缺少的主要食材，不计重量。</text><button class="primary full" disabled="{{busy || !passedCount}}" bindtap="shoppingGenerate">生成采购清单</button></view>
-      <button class="secondary full" bindtap="toggleHistory">之前的晚餐（{{history.length}}轮）</button>
-      <block wx:if="{{showHistory}}"><view wx:if="{{!history.length}}" class="empty">还没有历史晚餐。</view><view wx:for="{{history}}" wx:key="id" wx:for-item="past" class="card"><text>{{past.date}}</text><view wx:for="{{past.rows}}" wx:key="id" class="history-row">{{item.name}} · {{item.total}} · {{item.result}}</view></view></block>
+      <button class="secondary full" bindtap="toggleHistory">历史晚餐（{{historyCount}}轮）{{showHistory ? ' · 收起' : ' · 查看'}}</button>
+      <block wx:if="{{showHistory}}">
+        <view class="history-intro"><view class="title">之前怎么搭配的</view><text class="small">记录的是选菜和评分，不代表已经做过或吃过。</text></view>
+        <view class="history-search"><input value="{{historySearch}}" maxlength="40" bindinput="onHistorySearch" bindkeyboardheightchange="onKeyboardChange" placeholder="搜索历史菜名，含淘汰菜"/><button wx:if="{{historySearch}}" class="link" bindtap="clearHistorySearch">清空</button></view>
+        <text class="small">{{historySearch ? '匹配 ' + history.length + ' 轮' : '按最新到最早排列'}}</text>
+        <view wx:if="{{!history.length}}" class="empty">{{historyCount ? '没有匹配记录，换个菜名试试。' : '还没有历史晚餐；开始下一轮后，当前记录会保留在这里。'}}</view>
+        <view wx:for="{{history}}" wx:key="id" wx:for-item="past" class="card history-card">
+          <button class="history-card-heading" data-id="{{past.id}}" bindtap="toggleHistoryDetail"><view class="history-card-summary"><text class="title">{{past.date}}</text><text class="small">{{past.meatCount}}荤 {{past.vegCount}}素 · 共{{past.totalCount}}道</text></view><text class="badge {{past.passedCount === past.totalCount ? 'passed' : ''}}">{{past.status}}</text></button>
+          <text class="history-preview">{{past.preview}}</text>
+          <view class="history-progress"><text>已入选 {{past.passedCount}} / {{past.totalCount}}</text><text wx:if="{{past.pendingCount}}">待完成评分 {{past.pendingCount}}道</text></view>
+          <button class="link history-detail-toggle" data-id="{{past.id}}" bindtap="toggleHistoryDetail">{{past.expanded ? '收起详情' : '查看菜品和评分'}}</button>
+          <block wx:if="{{past.expanded}}">
+            <text class="small">{{past.fridgeText}}</text>
+            <view wx:for="{{past.rows}}" wx:key="id" wx:for-item="row" class="history-dish"><view class="dish-top"><text class="title">{{row.name}}</text><text class="kind">{{row.kindText}}</text></view><text class="description">{{row.ingredientsText}}</text><view class="history-score"><text>男生：{{row.boyText}}</text><text>女生：{{row.girlText}}</text></view><view class="history-progress"><text class="{{row.passed ? 'history-passed' : ''}}">{{row.verdict}}</text><text>{{row.totalText}}</text></view></view>
+            <button wx:if="{{past.rejectedCount}}" class="secondary full" data-id="{{past.id}}" bindtap="toggleHistoryRejected">{{past.rejectedOpen ? '收起' : '查看'}}淘汰菜（{{past.rejectedCount}}道）</button>
+            <view wx:for="{{past.rejected}}" wx:key="id" wx:for-item="row" class="history-dish"><text class="title">{{row.name}}</text><view class="history-score"><text>男生：{{row.boyText}}</text><text>女生：{{row.girlText}}</text></view><text class="small">合计 {{row.totalText}} · 未入选</text></view>
+            <button wx:if="{{past.hasMoreRejected}}" class="link full" bindtap="moreHistoryRejected">再看10条淘汰记录</button>
+          </block>
+          <view class="history-repeat"><text class="small">{{past.repeatReason || '复用入选菜，按当前菜单开始新一轮评分。'}}</text><button class="primary full" data-id="{{past.id}}" disabled="{{busy || !synced || !past.canRepeat}}" bindtap="repeatHistory">再吃这一顿（{{past.passedCount}}道入选菜）</button></view>
+        </view>
+      </block>
     </block>
     <block wx:elif="{{tab === 'fridge'}}">
-      <text class="eyebrow">已有的，先吃好</text><view class="headline">我们的冰箱</view><text class="description">只记主要食材，不记重量和常用调料。用完了就移除。</text>
-      <view class="add-bar"><input value="{{ingredient}}" maxlength="40" bindinput="onIngredient" placeholder="添加食材，如萝卜、排骨" bindconfirm="addIngredient"/><button class="primary" disabled="{{busy || !synced}}" bindtap="addIngredient">添加</button></view>
-      <view class="section-title">已经有的食材 <text class="small">{{pantry.length}}种</text></view><view wx:if="{{!pantry.length}}" class="empty">还没有添加食材，按冰箱里的实际情况记录。</view>
-      <view class="chips"><view wx:for="{{pantry}}" wx:key="*this" class="pantry-chip"><text>{{item}}</text><button class="link" disabled="{{busy}}" data-name="{{item}}" bindtap="removeIngredient">移除</button></view></view>
-      <view class="section-title">常用食材，点一下添加</view><view class="chips"><button wx:for="{{suggestions}}" wx:key="*this" class="chip" disabled="{{busy}}" data-name="{{item}}" bindtap="addSuggestion">{{item}}</button></view><text class="note">“主要食材已齐”不代表分量足够，做饭前请确认。</text>
+      <view class="fridge-heading"><view><view class="headline">我们的冰箱</view><text class="small">已有 {{pantry.length}} 种食材 · 两人共享</text></view><button class="primary" disabled="{{busy || !synced}}" bindtap="openPantryAdd">添加食材</button></view>
+      <view class="fridge-search"><input bindkeyboardheightchange="onKeyboardChange" value="{{pantrySearch}}" bindinput="onPantrySearch" placeholder="搜索冰箱里的食材" /><button class="secondary" disabled="{{busy || !pantry.length}}" bindtap="togglePantryManage">{{pantryManaging ? '完成' : '管理'}}</button></view>
+      <text class="note fridge-note">{{pantryManaging ? '勾选已用完的食材，或为食材修改分类。每次最多20种。' : '左滑食材可移除；管理中可以批量整理。'}}</text>
+      <view class="ingredient-browser fridge-browser">
+        <scroll-view scroll-y class="category-sidebar" enhanced show-scrollbar="{{false}}"><button wx:for="{{stockCategories}}" wx:key="id" class="category-button {{pantryCategory === item.id ? 'active-category' : ''}}" data-category="{{item.id}}" bindtap="selectPantryCategory"><text>{{item.label}}</text><text class="category-count">{{item.count}}</text></button></scroll-view>
+        <scroll-view scroll-y class="ingredient-results" enhanced show-scrollbar="{{false}}">
+          <view wx:if="{{!pantryRows.length}}" class="ingredient-empty">{{!pantry.length ? '冰箱还没有食材，点击上方添加。' : pantrySearch ? '没有匹配的食材，换个搜索词或分类。' : '这个分类还没有食材。'}}</view>
+          <view wx:for="{{pantryRows}}" wx:key="name" class="pantry-swipe-row" data-name="{{item.name}}" bindtouchstart="onPantryTouchStart" bindtouchmove="onPantryTouchMove" bindtouchend="onPantryTouchEnd" bindtouchcancel="onPantryTouchCancel"><button wx:if="{{!pantryManaging && pantrySwipeName === item.name}}" class="swipe-remove" data-name="{{item.name}}" disabled="{{busy}}" catchtap="removeSwipedIngredient">移除</button><button class="ingredient-item pantry-swipe-front {{item.selected ? 'chosen' : ''}} {{pantrySwipeName === item.name ? 'swipe-open' : ''}}" data-name="{{item.name}}" disabled="{{busy}}" bindtap="togglePantryItem"><text class="ingredient-name">{{item.name}}</text><text wx:if="{{pantryManaging}}" class="ingredient-check">{{item.selected ? '已选' : '选择'}}</text></button></view>
+        </scroll-view>
+      </view>
+      <text class="note fridge-note">只记录主要食材，不记录重量和保质期。</text>
+      <view wx:if="{{pantryManaging && !keyboardHeight && !pantryOpen}}" class="fridge-manage-bar"><text class="small">已选 {{pantrySelected.length}} 种</text><view class="row"><picker range="{{customCategories}}" range-key="label" value="{{classifyIndex}}" disabled="{{busy || !pantrySelected.length}}" bindchange="changePantryCategory"><view class="secondary manage-category {{!pantrySelected.length ? 'muted-control' : ''}}">修改分类</view></picker><button class="primary" disabled="{{busy || !pantrySelected.length}}" bindtap="removePantrySelected">移除所选</button></view></view>
     </block>
     <block wx:elif="{{tab === 'shopping'}}">
       <text class="eyebrow">带着清单，去买菜</text><view class="headline">采购清单</view><text class="description">两个人共用一张清单，买到了打勾，再确认加入冰箱。</text>
-      <view class="add-bar"><input value="{{ingredient}}" maxlength="40" bindinput="onIngredient" placeholder="添加还想买的食材" bindconfirm="addIngredient"/><button class="primary" disabled="{{busy || !synced}}" bindtap="addIngredient">添加</button></view>
+      <view class="add-bar"><input bindkeyboardheightchange="onKeyboardChange" value="{{ingredient}}" maxlength="40" bindinput="onIngredient" placeholder="添加还想买的食材" bindconfirm="addIngredient"/><button class="primary" disabled="{{busy || !synced}}" bindtap="addIngredient">添加</button></view>
       <view class="section-title">要买的食材 <text class="small">已买 {{boughtCount}} / {{shopping.length}}</text></view>
       <view wx:if="{{!shopping.length}}" class="empty">清单还是空的，晚餐通过评分后可以生成，也可以手动添加。</view>
       <view wx:for="{{shopping}}" wx:key="name" class="shopping-row"><view class="row"><switch color="#3c5944" checked="{{item.checked}}" disabled="{{busy}}" data-name="{{item.name}}" bindchange="checkShopping"/><text class="{{item.checked ? 'strike' : ''}}">{{item.name}}</text></view><button class="link" disabled="{{busy}}" data-name="{{item.name}}" bindtap="removeIngredient">移除</button></view>
@@ -49,13 +77,52 @@
     </block>
     <block wx:elif="{{tab === 'menu'}}">
       <text class="eyebrow">把想吃的，都记下来</text><view class="headline">日常菜单</view><text class="description">来自菜单照片，也可以添加你们自己的拿手菜。</text>
-      <view class="add-bar"><input value="{{search}}" bindinput="onSearch" placeholder="搜索菜名或食材"/><button class="primary" disabled="{{busy || !synced}}" bindtap="openEditor">新增</button></view>
+      <view class="add-bar"><input bindkeyboardheightchange="onKeyboardChange" value="{{search}}" bindinput="onSearch" placeholder="搜索菜名或食材"/><button class="primary" disabled="{{busy || !synced}}" bindtap="openEditor">新增</button></view>
       <view class="filters"><button wx:for="{{filters}}" wx:key="id" class="chip {{filter === item.id ? 'chosen' : ''}}" data-filter="{{item.id}}" bindtap="selectFilter">{{item.label}}</button></view>
       <text class="note">食材按常见做法整理，可以编辑。含肉算荤菜，蛋类算素菜。</text><view wx:if="{{!visibleDishes.length}}" class="empty">没有符合条件的菜，换个搜索词或添加新菜。</view>
       <view wx:for="{{visibleDishes}}" wx:key="id" class="card menu-card"><view class="dish-top"><text class="title">{{item.name}}</text><text class="kind">{{item.kindText}}</text></view><text class="description">{{item.ingredientsText}}</text><text class="availability">{{item.availability}}</text><view class="row menu-actions"><button class="link" disabled="{{busy}}" data-id="{{item.id}}" bindtap="openEditor">编辑</button><button class="link" disabled="{{busy}}" data-id="{{item.id}}" bindtap="toggleDish">{{item.active ? '不再推荐' : '恢复推荐'}}</button><button class="link danger" disabled="{{busy}}" data-id="{{item.id}}" data-name="{{item.name}}" bindtap="deleteDish">永久删除</button></view></view>
     </block>
-    <view class="bottom-nav"><button wx:for="{{tabs}}" wx:key="id" class="nav-button {{tab === item.id ? 'selected' : ''}}" data-tab="{{item.id}}" bindtap="selectTab">{{item.label}}</button></view>
+    <view wx:if="{{!keyboardHeight && !editorOpen && !pickOpen && !pantryOpen && !pantryManaging}}" class="bottom-nav"><button wx:for="{{tabs}}" wx:key="id" class="nav-button {{tab === item.id ? 'selected' : ''}}" data-tab="{{item.id}}" bindtap="selectTab">{{item.label}}</button></view>
   </block>
-  <view wx:if="{{editorOpen}}" class="overlay" bindtap="closeEditor"><view class="modal" catchtap="swallowTap"><view class="modal-title"><text>{{draftId ? '编辑菜品' : '新增一道菜'}}</text><button class="link" bindtap="closeEditor">关闭</button></view><view class="label">菜名</view><input value="{{draftName}}" maxlength="40" bindinput="onDraftName" placeholder="比如番茄炒蛋"/><view class="label">分类</view><view class="row"><button class="role {{draftKind === 'meat' ? 'chosen' : ''}}" data-kind="meat" bindtap="onDraftKind">荤菜</button><button class="role {{draftKind === 'veg' ? 'chosen' : ''}}" data-kind="veg" bindtap="onDraftKind">素菜（含蛋）</button></view><view class="label">主要食材</view><textarea value="{{draftIngredients}}" maxlength="800" bindinput="onDraftIngredients" placeholder="用顿号分开，如番茄、鸡蛋"/><text class="note">最多20种主要食材，不填重量和常用调料。修改菜单不改变已经生成的候选菜。</text><button class="primary full" disabled="{{busy}}" bindtap="saveDish">保存菜品</button></view></view>
-  <view wx:if="{{pickOpen}}" class="overlay" bindtap="closePick"><view class="modal" catchtap="swallowTap"><view class="modal-title"><text>选择另一道{{pickKind === 'meat' ? '荤菜' : '素菜'}}</text><button class="link" bindtap="closePick">关闭</button></view><input value="{{pickSearch}}" bindinput="onPickSearch" placeholder="搜索菜名或食材"/><scroll-view scroll-y class="pick-scroll"><view wx:if="{{!pickItems.length}}" class="empty">没有符合条件的菜。</view><button wx:for="{{pickItems}}" wx:key="id" class="pick-item" data-id="{{item.id}}" disabled="{{busy}}" bindtap="pickDish"><text>{{item.name}}</text><text class="small">{{item.ingredientsText}}</text></button></scroll-view></view></view>
+  <view wx:if="{{pantryOpen}}" class="overlay" style="bottom:{{sheetBottom}}px;">
+    <view class="sheet-mask" catchtap="closePantryAdd" catchtouchmove="swallowTap"/>
+    <view class="modal pantry-sheet {{keyboardHeight ? 'keyboard-sheet' : ''}}" style="height:{{sheetHeight}}px;" catchtap="swallowTap">
+      <view class="modal-title"><text>添加冰箱食材</text><button class="link" disabled="{{busy}}" bindtap="closePantryAdd">关闭</button></view>
+      <view wx:if="{{!keyboardHeight || pantryFocus === 'search'}}" class="sheet-search"><input data-field="search" bindfocus="onPantryFocus" bindkeyboardheightchange="onKeyboardChange" value="{{addSearch}}" bindinput="onAddSearch" placeholder="搜索食材，如西红柿" adjust-position="{{false}}" /></view>
+      <view class="ingredient-browser add-browser">
+        <scroll-view scroll-y class="category-sidebar" enhanced show-scrollbar="{{false}}"><button wx:for="{{choiceCategories}}" wx:key="id" class="category-button {{addCategory === item.id ? 'active-category' : ''}}" data-category="{{item.id}}" bindtap="selectAddCategory"><text>{{item.label}}</text><text class="category-count">{{item.count}}</text></button></scroll-view>
+        <scroll-view scroll-y class="ingredient-results" enhanced show-scrollbar="{{false}}"><view wx:if="{{!addChoices.length}}" class="ingredient-empty">没有找到？在下方填写自定义食材。</view><button wx:for="{{addChoices}}" wx:key="name" class="ingredient-item {{item.selected ? 'chosen' : ''}}" data-name="{{item.name}}" disabled="{{busy}}" bindtap="toggleAddItem"><text class="ingredient-name">{{item.name}}</text><text class="ingredient-check">{{item.selected ? '已选' : '选择'}}</text></button></scroll-view>
+      </view>
+      <view class="sheet-footer pantry-add-footer">
+        <view wx:if="{{!keyboardHeight}}" class="custom-title"><text class="small">自定义食材 · 一次填写一种</text><picker range="{{customCategories}}" range-key="label" value="{{customCategoryIndex}}" disabled="{{busy}}" bindchange="onCustomCategory"><view class="custom-category">{{customCategories[customCategoryIndex].label}} · 选分类</view></picker></view>
+        <view wx:if="{{!keyboardHeight || pantryFocus === 'custom'}}" class="custom-add-row"><input data-field="custom" bindfocus="onPantryFocus" bindkeyboardheightchange="onKeyboardChange" value="{{customName}}" maxlength="40" disabled="{{busy}}" bindinput="onCustomName" bindconfirm="addCustomIngredient" placeholder="如秋葵" adjust-position="{{false}}"/><button class="secondary" disabled="{{busy || !customName}}" bindtap="addCustomIngredient">待选</button></view>
+        <view wx:if="{{!keyboardHeight}}" class="selected-summary"><text class="small">已选 {{addSelected.length}} / 20 种</text><button class="link" disabled="{{busy || !addSelected.length}}" bindtap="clearAddSelected">清空选择</button></view>
+        <scroll-view wx:if="{{addSelected.length && !keyboardHeight}}" scroll-x class="selected-ingredients" enhanced show-scrollbar="{{false}}"><button wx:for="{{addSelected}}" wx:key="name" class="selected-ingredient" data-name="{{item.name}}" disabled="{{busy}}" bindtap="toggleAddItem">{{item.name}} ×</button></scroll-view>
+        <button class="primary full" disabled="{{busy || !synced || !addSelected.length}}" loading="{{busy}}" bindtap="savePantryAdd">加入冰箱（{{addSelected.length}}）</button>
+      </view>
+    </view>
+  </view>
+  <view wx:if="{{editorOpen}}" class="overlay" style="bottom:{{sheetBottom}}px;">
+    <view class="sheet-mask" catchtap="closeEditor" catchtouchmove="swallowTap"/>
+    <view class="modal {{keyboardHeight ? 'keyboard-sheet' : ''}}" style="height:{{sheetHeight}}px;" catchtap="swallowTap">
+      <view class="modal-title"><text>{{draftId ? '编辑菜品' : '新增一道菜'}}</text><button class="link" disabled="{{busy}}" bindtap="closeEditor">关闭</button></view>
+      <scroll-view scroll-y class="sheet-scroll" scroll-into-view="{{sheetTarget}}" enhanced show-scrollbar="{{false}}">
+        <view class="sheet-content">
+          <view id="draft-name-field"><view class="label">菜名</view><input bindkeyboardheightchange="onKeyboardChange" value="{{draftName}}" maxlength="40" data-field="draft-name-field" bindfocus="onSheetFocus" bindinput="onDraftName" placeholder="比如番茄炒蛋" adjust-position="{{false}}" /></view>
+          <view class="label">分类</view><view class="row"><button class="role {{draftKind === 'meat' ? 'chosen' : ''}}" data-kind="meat" bindtap="onDraftKind">荤菜</button><button class="role {{draftKind === 'veg' ? 'chosen' : ''}}" data-kind="veg" bindtap="onDraftKind">素菜（含蛋）</button></view>
+          <view id="draft-ingredients-field"><view class="label">主要食材</view><textarea bindkeyboardheightchange="onKeyboardChange" value="{{draftIngredients}}" maxlength="800" data-field="draft-ingredients-field" bindfocus="onSheetFocus" bindinput="onDraftIngredients" placeholder="用顿号分开，如番茄、鸡蛋" adjust-position="{{false}}" /></view>
+          <text class="note">最多20种主要食材，不填重量和常用调料。修改菜单不改变已经生成的候选菜。</text>
+        </view>
+      </scroll-view>
+      <view class="sheet-footer"><button class="primary full" loading="{{busy}}" disabled="{{busy}}" bindtap="saveDish">保存菜品</button></view>
+    </view>
+  </view>
+  <view wx:if="{{pickOpen}}" class="overlay" style="bottom:{{sheetBottom}}px;">
+    <view class="sheet-mask" catchtap="closePick" catchtouchmove="swallowTap"/>
+    <view class="modal {{keyboardHeight ? 'keyboard-sheet' : ''}}" style="height:{{sheetHeight}}px;" catchtap="swallowTap">
+      <view class="modal-title"><text>选择另一道{{pickKind === 'meat' ? '荤菜' : '素菜'}}</text><button class="link" disabled="{{busy}}" bindtap="closePick">关闭</button></view>
+      <view class="sheet-search"><input bindkeyboardheightchange="onKeyboardChange" value="{{pickSearch}}" bindinput="onPickSearch" placeholder="搜索菜名或食材" adjust-position="{{false}}" /></view>
+      <scroll-view scroll-y class="sheet-scroll" enhanced show-scrollbar="{{false}}"><view class="sheet-content"><view wx:if="{{!pickItems.length}}" class="empty">没有符合条件的菜。</view><button wx:for="{{pickItems}}" wx:key="id" class="pick-item" data-id="{{item.id}}" disabled="{{busy}}" bindtap="pickDish"><text>{{item.name}}</text><text class="small">{{item.ingredientsText}}</text></button></view></scroll-view>
+    </view>
+  </view>
 </view>

@@ -1,7 +1,7 @@
 import { env } from 'cloudflare:workers';
 import { readSession } from '../../../lib/session';
 import { limitedJson } from '../../../lib/request';
-import { applyAction, newKitchen, type Action, type Kitchen } from '../../../lib/kitchen';
+import { applyAction, newKitchen, kitchenView, type Action, type Kitchen } from '../../../lib/kitchen';
 export const dynamic = 'force-dynamic';
 const responseHeaders = { 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' };
 function reply(value: unknown, status = 200) { return Response.json(value, { status, headers: responseHeaders }); }
@@ -20,7 +20,7 @@ async function readKitchen(kitchenId: string) {
 export async function GET(request: Request) {
   const session = await readSession(request);
   if (!session) return reply({ error: '请重新输入共同口令登录' }, 401);
-  try { const row = await readKitchen(session.kitchenId); return reply({ role: session.role, version: row.version, kitchen: JSON.parse(row.state) }); }
+  try { const row = await readKitchen(session.kitchenId); return reply({ role: session.role, version: row.version, kitchen: kitchenView(JSON.parse(row.state), session.role) }); }
   catch { return reply({ error: '共享数据暂时无法读取，请稍后重试' }, 503); }
 }
 export async function POST(request: Request) {
@@ -40,7 +40,7 @@ export async function POST(request: Request) {
       catch (error) { return reply({ error: error instanceof Error ? error.message : '操作内容不正确' }, 400); }
       // 保存时要求版本仍然相同；另一人先保存了，就重新读他的改动，再合并本次操作。
       const result = await env.DB!.prepare('UPDATE kitchens SET state = ?, version = version + 1 WHERE id = ? AND version = ?').bind(JSON.stringify(state), session.kitchenId, row.version).run();
-      if (result.meta.changes === 1) return reply({ role: session.role, version: row.version + 1, kitchen: state });
+      if (result.meta.changes === 1) return reply({ role: session.role, version: row.version + 1, kitchen: kitchenView(state, session.role) });
     } catch { return reply({ error: '共享数据暂时无法保存，请稍后重试' }, 503); }
   }
   return reply({ error: '两个人正在同时操作，请稍后再试' }, 409);

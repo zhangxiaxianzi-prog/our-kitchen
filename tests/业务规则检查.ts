@@ -6,11 +6,11 @@ assert.equal(k.dishes.find(d=>d.name==='油豆腐烧肉')!.kind,'meat');assert.e
 applyAction(k,{action:'mealCreate'},0);const meal=k.meals[0];assert.equal(meal.candidates.filter(c=>c.dish.kind==='meat').length,1);assert.equal(meal.candidates.filter(c=>c.dish.kind==='veg').length,2);
 let c=meal.candidates[0];applyAction(k,{action:'score',mealId:meal.id,candidateId:c.id,score:2,role:1},0);assert.deepEqual(c.scores,[2,null]);
 applyAction(k,{action:'score',mealId:meal.id,candidateId:c.id,score:5},1);assert.deepEqual(c.scores,[2,5]);applyAction(k,{action:'shoppingGenerate'},0);assert.deepEqual(k.shopping.map(x=>x.name).sort(),[...c.dish.ingredients].sort());
-applyAction(k,{action:'score',mealId:meal.id,candidateId:c.id,score:1},0);k.shopping=[];assert.throws(()=>applyAction(k,{action:'shoppingGenerate'},0),/评分通过/);
+assert.throws(()=>applyAction(k,{action:'score',mealId:meal.id,candidateId:c.id,score:1},0),/已出结果/);applyAction(k,{action:'replace',mealId:meal.id,candidateId:c.id},0);c=meal.candidates[0];applyAction(k,{action:'score',mealId:meal.id,candidateId:c.id,score:1},0);applyAction(k,{action:'score',mealId:meal.id,candidateId:c.id,score:5},1);assert.equal(meal.rejected?.length,1);k.shopping=[];assert.throws(()=>applyAction(k,{action:'shoppingGenerate'},0),/评分通过/);
 const oldId=c.id;const oldDish=c.dish.id;applyAction(k,{action:'replace',mealId:meal.id,candidateId:c.id},0);assert.notEqual(c.id,oldId);assert.notEqual(c.dish.id,oldDish);assert.deepEqual(c.scores,[null,null]);assert.throws(()=>applyAction(k,{action:'score',mealId:meal.id,candidateId:oldId,score:4},1),/候选菜已变更/);
 applyAction(k,{action:'pantryAdd',name:'西红柿'},0);applyAction(k,{action:'pantryAdd',name:'番茄'},1);assert.equal(k.pantry.filter(x=>x==='番茄').length,1);
 const fridge=newKitchen();assert.throws(()=>applyAction(fridge,{action:'mealCreate',fridge:true},0),/候选不足/);assert.equal(fridge.meals.length,0);
 const snap=structuredClone(c.dish);applyAction(k,{action:'dishDelete',id:c.dish.id},0);assert.deepEqual(c.dish,snap);assert(!k.dishes.some(d=>d.id===snap.id));
 assert.throws(()=>applyAction(k,{action:'score',mealId:meal.id,candidateId:c.id,score:6},0),/0到5/);
 applyAction(k,{action:'shoppingAdd',name:'萝卜'},0);applyAction(k,{action:'shoppingCheck',name:'萝卜',checked:true},1);applyAction(k,{action:'shoppingToPantry'},0);assert(k.pantry.includes('萝卜'));assert(!k.shopping.some(x=>x.name==='萝卜'));
-console.log('规则检查通过：'+initialMenu().length+'道初始菜；7分入选、6分不入选、未评分等待、换菜重评、食材合并及历史保留正确。');
+console.log('规则检查通过：'+initialMenu().length+'道初始菜；7分入选、6分自动换菜、未评分等待、换菜重评、食材合并及历史保留正确。');
