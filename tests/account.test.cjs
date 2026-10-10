@@ -134,3 +134,23 @@ test('生产路由关闭旧登录；厨房读取检查成员；管理修改校�
   assert.equal((await post('/api/admin/save', { userId: guest, enabled: true, note: '', version: 0 }, { Cookie: adminCookie, Origin: origin })).status, 200);
   const page = await fetch(base + '/admin'); assert.match(page.headers.get('content-security-policy'), /frame-ancestors 'none'/); assert((await page.text()).includes('白名单管理'));
 });
+
+// 用假微信响应检查诊断分支，避免离线测试使用真实密钥或调用微信。
+test('微信登录诊断区分网络、超时、解析和拒绝，日志不泄露敏感内容', async () => {
+  const cases = [
+    { request: async () => { throw Object.assign(new Error('secret-value login-code'), { cause: { code: 'ENOTFOUND' } }); }, reason: 'ENOTFOUND', phase: '请求微信接口' },
+    { request: async () => { throw Object.assign(new Error('secret-value'), { name: 'TimeoutError' }); }, reason: 'WECHAT_TIMEOUT', phase: '请求微信接口' },
+    { request: async () => ({ status: 403, ok: false, headers: { get: () => 'text/html; charset=utf-8' }, json: async () => { throw new SyntaxError('secret-value'); } }), reason: 'WECHAT_INVALID_JSON', phase: '解析微信响应', status: 403 },
+    { request: async () => ({ status: 200, ok: true, json: async () => ({ errcode: 40125, errmsg: 'secret-value' }) }), reason: 'WECHAT_REJECTED', phase: '核实微信身份', status: 200, code: 40125 }
+  ];
+  for (const item of cases) {
+    const logs = []; const identity = new WechatIdentity('test-app', 'secret-value', item.request, (...args) => logs.push(args));
+    await assert.rejects(identity.exchange('login-code'));
+    assert.equal(logs.length, 1); const detail = logs[0][1];
+    assert.equal(detail.错误编号, item.reason); assert.equal(detail.阶段, item.phase);
+    assert.equal(detail.微信状态, item.status || null); assert.equal(detail.微信错误编号, item.code || null);
+    assert(!JSON.stringify(logs).includes('secret-value')); assert(!JSON.stringify(logs).includes('login-code'));
+  }
+  const logs = []; assert.equal(await new WechatIdentity('test-app', 'secret-value', async () => ({ ok: true, json: async () => ({ openid: owner }) }), (...args) => logs.push(args)).exchange('login-code'), owner);
+  assert.equal(logs.length, 0);
+});

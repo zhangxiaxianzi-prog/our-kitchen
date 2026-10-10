@@ -21,12 +21,12 @@ Page({
     keyboardHeight: 0, visibleHeight: 600, sheetHeight: 500, sheetBottom: 0, sheetTarget: '',
     pickOpen: false, pickItems: [], pickCandidateId: '', pickMealId: '', pickKind: '', pickSearch: ''
   },
-  onLoad() { this._version = 0; this._sessionEpoch = 0; this._visible = false; this._unloaded = false; this._calendarRequest = 0; this.setData({ calendarMonth: calendar.today().slice(0, 7), calendarDate: calendar.today() }); this.paintCalendar(); this.updateSheetSize(0); },
+  onLoad() { this._version = 0; this._sessionEpoch = 0; this._visible = false; this._unloaded = false; this._loginPromptShown = false; this._calendarRequest = 0; this.setData({ calendarMonth: calendar.today().slice(0, 7), calendarDate: calendar.today() }); this.paintCalendar(); this.updateSheetSize(0); },
   onShow() {
     this._visible = true; if (this.data.tab === 'calendar') { this.setData({ calendarLoading: false }); this.loadCalendar(this._calendarCursor || null, this.data.calendarPage, this.data.calendarPages); }
     this.updateSheetSize(0);
     if (api.token() && !api.accountToken()) this.clearSession();
-    this.loadAccount();
+    this.loadAccount().then(() => this.promptWechatLogin());
     if (api.token()) { this.setData({ loggedIn: true }); this.refresh(); }
     this.scheduleRefresh();
   },
@@ -134,6 +134,19 @@ Page({
     try { await action(() => !this._unloaded && epoch === this._sessionEpoch); }
     catch (error) { if (!this._unloaded && epoch === this._sessionEpoch) this.handleError(error); }
     finally { if (!this._unloaded) this.setData({ busy: false }); }
+  },
+  // 本次打开只提示一次；取消、登录失败或从后台回来，都可以自己点按钮重试。
+  promptWechatLogin() {
+    if (!this._visible || this._unloaded || this._loginPromptShown || api.accountToken() || this.data.busy) return;
+    this._loginPromptShown = true;
+    const epoch = this._sessionEpoch;
+    wx.showModal({
+      title: '微信登录', content: '登录后可以查看自己的厨房。', confirmText: '确认登录', cancelText: '暂不登录',
+      success: result => {
+        // 弹窗出现后如果离开页面或已换了登录状态，不继续使用旧的确认结果。
+        if (result.confirm && this._visible && !this._unloaded && epoch === this._sessionEpoch && !api.accountToken()) this.wechatLogin();
+      }
+    });
   },
   async wechatLogin() {
     await this.accountAction(async valid => { const profile = await api.wechatLogin(); if (!valid()) return; this.setData({ accountReady: true, userId: profile.userId, administrator: profile.administrator }); await this.loadAccount(); });

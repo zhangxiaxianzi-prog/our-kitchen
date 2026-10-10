@@ -181,3 +181,25 @@ test('微信登录只提交临时凭证，账号和厨房票据分别保存，�
   await assert.rejects(api.profile(), error => error.account && error.status === 401);
   assert.equal(storage.size, 0);
 });
+
+// 模拟页面前后台切换与已保存的账号，不发起真实微信登录。
+test('打开页面未登录自动确认，取消或失败后不连续提示，有效票据不提示', async () => {
+  let definition; let token = ''; let profileError = null; let modal; let modalCount = 0; let loginCount = 0;
+  const api = { accountToken: () => token, token: () => '', profile: async () => { if (profileError) { if (profileError.status === 401) token = ''; throw profileError; } return { userId: 'test' }; } };
+  const wx = { showModal: input => { modal = input; modalCount++; } };
+  const code = fs.readFileSync(require.resolve('../miniprogram/pages/kitchen/index.js'), 'utf8');
+  vm.runInNewContext(code, { Page: page => { definition = page; }, require: path => path.includes('/api') ? api : require('../miniprogram/utils/' + (path.includes('ingredients') ? 'ingredients' : path.includes('swipe') ? 'swipe' : path.includes('calendar') ? 'calendar' : 'view')), wx, setTimeout, clearTimeout, console });
+  const create = () => {
+    const page = Object.assign({}, definition, { data: structuredClone(definition.data), setData(patch) { Object.assign(this.data, patch); }, updateSheetSize() {}, paintCalendar() {}, scheduleRefresh() {}, loadKitchens: async () => {}, handleError() {}, wechatLogin: async function () { loginCount++; await this.accountAction(async () => { throw new Error('离线模拟登录失败'); }); } });
+    page.onLoad(); return page;
+  };
+  const settle = () => new Promise(resolve => setImmediate(resolve));
+  const page = create(); page.onShow(); await settle(); assert.equal(modalCount, 1);
+  modal.success({ confirm: false }); page.onHide(); page.onShow(); await settle(); assert.equal(modalCount, 1); assert.equal(loginCount, 0);
+  const confirmed = create(); confirmed.onShow(); await settle(); modal.success({ confirm: true }); assert.equal(loginCount, 1);
+  confirmed.onShow(); await settle(); assert.equal(modalCount, 2);
+  const hidden = create(); hidden.onShow(); await settle(); hidden.onHide(); modal.success({ confirm: true }); assert.equal(loginCount, 1);
+  token = 'valid'; const remembered = create(); remembered.onShow(); await settle(); assert.equal(modalCount, 3); assert.equal(remembered.data.accountReady, true);
+  profileError = Object.assign(new Error('过期'), { status: 401 }); const expired = create(); expired.onShow(); await settle(); assert.equal(modalCount, 4);
+  token = 'still-valid'; profileError = new Error('网络失败'); const offline = create(); offline.onShow(); await settle(); assert.equal(modalCount, 4); assert.equal(token, 'still-valid');
+});

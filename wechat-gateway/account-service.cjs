@@ -5,18 +5,31 @@ const { PermissionCache } = require('./permission-cache.cjs');
 const validId = value => typeof value === 'string' && /^[A-Za-z0-9_-]{43}$/.test(value);
 // 只请求微信固定接口，不接收客户端传来的微信身份或接口地址。
 class WechatIdentity {
-  constructor(appId, secret, request = fetch) { this.appId = appId; this.secret = secret; this.request = request; }
+  constructor(appId, secret, request = fetch, logError = (...args) => console.error(...args)) { this.appId = appId; this.secret = secret; this.request = request; this.logError = logError; }
   async exchange(code) {
     if (typeof code !== 'string' || !/^[A-Za-z0-9_-]{5,256}$/.test(code)) throw new KitchenError('微信登录凭证不正确');
     if (!this.secret) throw new KitchenError('后台尚未配置微信登录，请联系管理员', 503);
     const url = new URL('https://api.weixin.qq.com/sns/jscode2session');
     url.search = new URLSearchParams({ appid: this.appId, secret: this.secret, js_code: code, grant_type: 'authorization_code' }).toString();
+    const started = Date.now(); let phase = '请求微信接口'; let status = null; let contentType = ''; let wechatCode = null;
     try {
       const response = await this.request(url, { signal: AbortSignal.timeout(5000), redirect: 'error' });
-      const result = await response.json();
-      if (!response.ok || result.errcode || !validUser(result.openid)) throw new KitchenError('微信登录未成功，请重新登录', 401);
+      status = response.status; phase = '解析微信响应';
+      const type = response.headers && response.headers.get('content-type');
+      contentType = typeof type === 'string' && /^[a-zA-Z0-9.+-]+\/[a-zA-Z0-9.+-]+(?:;.*)?$/.test(type) ? type.split(';')[0].slice(0, 80) : '';
+      const result = await response.json(); phase = '核实微信身份';
+      wechatCode = result && Number.isSafeInteger(result.errcode) ? result.errcode : null;
+      if (!response.ok || !result || result.errcode || !validUser(result.openid)) throw new KitchenError('微信登录未成功，请重新登录', 401);
       return result.openid;
-    } catch (error) { if (error instanceof KitchenError) throw error; throw new KitchenError('暂时无法核实微信身份，请稍后重试', 503); }
+    } catch (error) {
+      // 只打印固定分类和状态，不打印请求地址、微信凭证、密钥、身份或响应正文。
+      const knownCodes = new Set(['ENOTFOUND', 'EAI_AGAIN', 'ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'ENETUNREACH', 'EHOSTUNREACH', 'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_HEADERS_TIMEOUT', 'UND_ERR_SOCKET', 'CERT_HAS_EXPIRED', 'UNABLE_TO_VERIFY_LEAF_SIGNATURE', 'DEPTH_ZERO_SELF_SIGNED_CERT']);
+      const rawCode = error && (error.cause && error.cause.code || error.code);
+      const reason = knownCodes.has(rawCode) ? rawCode : error && error.name === 'TimeoutError' ? 'WECHAT_TIMEOUT' : phase === '解析微信响应' ? 'WECHAT_INVALID_JSON' : error instanceof KitchenError ? 'WECHAT_REJECTED' : 'WECHAT_REQUEST_FAILED';
+      this.logError('核实微信身份失败', { 阶段: phase, 错误编号: reason, 微信状态: Number.isInteger(status) ? status : null, 内容类型: contentType, 微信错误编号: wechatCode, 耗时毫秒: Date.now() - started });
+      if (error instanceof KitchenError) throw error;
+      throw new KitchenError('暂时无法核实微信身份，请稍后重试', 503);
+    }
   }
 }
 class AccountService {
