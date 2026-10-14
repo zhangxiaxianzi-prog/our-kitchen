@@ -203,3 +203,36 @@ test('打开页面未登录自动确认，取消或失败后不连续提示，�
   profileError = Object.assign(new Error('过期'), { status: 401 }); const expired = create(); expired.onShow(); await settle(); assert.equal(modalCount, 4);
   token = 'still-valid'; profileError = new Error('网络失败'); const offline = create(); offline.onShow(); await settle(); assert.equal(modalCount, 4); assert.equal(token, 'still-valid');
 });
+
+// 原生菜单回调可能迟到，确认不会拿着旧账号或旧厨房继续执行管理操作。
+test('厨房入口表单互斥并保留输入，管理菜单限制创建者且拒绝过期回调', async () => {
+  let definition; let menu; const actions = []; let hides = 0;
+  const wx = { hideKeyboard: () => hides++, showActionSheet: input => { menu = input; } };
+  const code = fs.readFileSync(require.resolve('../miniprogram/pages/kitchen/index.js'), 'utf8');
+  vm.runInNewContext(code, { Page: page => { definition = page; }, require: path => path.includes('/api') ? {} : require('../miniprogram/utils/' + (path.includes('ingredients') ? 'ingredients' : path.includes('swipe') ? 'swipe' : path.includes('calendar') ? 'calendar' : 'view')), wx, setTimeout, clearTimeout, console });
+  const page = Object.assign({}, definition, { data: structuredClone(definition.data), _visible: true, _sessionEpoch: 0, setData(patch) { Object.assign(this.data, patch); }, showRequests: e => actions.push(['requests', e.currentTarget.dataset.id]), resetInvitation: e => actions.push(['invitation', e.currentTarget.dataset.id]), copyUserId: () => actions.push(['copy']), scanAdminLogin: () => actions.push(['scan']), accountLogout: () => actions.push(['logout']), confirm: async () => true });
+  const event = (key, value) => ({ currentTarget: { dataset: { [key]: value } } });
+  page.data.newKitchenName = '我们的厨房'; page.data.passphrase = '未提交的口令';
+  page.toggleGateForm(event('form', 'create')); assert.equal(page.data.gateForm, 'create');
+  page.toggleGateForm(event('form', 'join')); assert.equal(page.data.gateForm, 'join'); assert.equal(page.data.newKitchenName, '我们的厨房');
+  page.closeGateForm(); assert.equal(page.data.gateForm, ''); assert.equal(page.data.passphrase, '未提交的口令'); assert.equal(hides, 3);
+  page.data.kitchens = [{ id: 'owned', owner: true }, { id: 'joined', owner: false }];
+  page.showKitchenMenu(event('id', 'joined')); assert.equal(menu, undefined);
+  page.showKitchenMenu(event('id', 'owned')); menu.success({ tapIndex: 0 }); assert.deepEqual(actions.pop(), ['requests', 'owned']);
+  page.showKitchenMenu(event('id', 'owned')); page._sessionEpoch++; menu.success({ tapIndex: 1 }); assert.equal(actions.length, 0);
+  page.data.accountReady = true; page.showAccountMenu(); assert.equal(menu.itemList.length, 2); assert(!menu.itemList.includes('扫描登录管理网页'));
+  menu.success({ tapIndex: 0 }); assert.deepEqual(actions.pop(), ['copy']);
+  page.data.administrator = true; page.showAccountMenu(); assert.equal(menu.itemList.length, 3); menu.success({ tapIndex: 1 }); assert.deepEqual(actions.pop(), ['scan']);
+  page.showAccountMenu(); page._visible = false; await menu.success({ tapIndex: 2 }); assert.equal(actions.length, 0);
+});
+// 最终结果只能来自公开且通过的评分，另一人的未公开分数不参与前端猜测。
+test('本轮汇总只展示双人7分入选菜，缺少食材去重；重新搭配提示符合日历规则', async () => {
+  let definition; let confirmation;
+  const code = fs.readFileSync(require.resolve('../miniprogram/pages/kitchen/index.js'), 'utf8');
+  vm.runInNewContext(code, { Page: page => { definition = page; }, require: path => path.includes('/api') ? {} : require('../miniprogram/utils/' + (path.includes('ingredients') ? 'ingredients' : path.includes('swipe') ? 'swipe' : path.includes('calendar') ? 'calendar' : 'view')), wx: {}, setTimeout, clearTimeout, console });
+  const page = Object.assign({}, definition, { data: structuredClone(definition.data), _sessionEpoch: 0, _version: 0, setData(patch) { Object.assign(this.data, patch); }, filterDishes() {}, confirm: async text => { confirmation = text; return false; } });
+  const candidate = (id, scores, names) => ({ id, dish: { name: id, ingredients: names, kind: 'veg' }, scores });
+  page.accept({ role: 0, version: 1, kitchen: { dishes: [], pantry: ['番茄'], shopping: [], meals: [{ id: 'm', candidates: [candidate('入选一', [2, 5], ['番茄', '鸡蛋']), candidate('入选二', [4, 4], ['鸡蛋', '豆腐']), candidate('等待', [5, null], ['牛肉']), candidate('低分', [1, 5], ['排骨'])] }] } }, 0);
+  assert.equal(page.data.summaryDishes.length, 2); assert.equal(page.data.summaryMissingText, '鸡蛋、豆腐');
+  await page.createMeal(); assert(confirmation.includes('未完成评分的候选会被替换')); assert(confirmation.includes('三餐日历'));
+});

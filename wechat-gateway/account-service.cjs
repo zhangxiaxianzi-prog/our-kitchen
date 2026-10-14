@@ -49,7 +49,12 @@ class AccountService {
     const userId = await this.identity.exchange(input.code); await this.repository.ensureUser(userId);
     return { token: this.sessions.issueAccount(userId), userId, administrator: this.isAdmin(userId) };
   }
-  async profile(userId) { return { userId, administrator: this.isAdmin(userId), unlimited: await this.permissions.enabled(userId) }; }
+  async profile(userId) { return { nickname: await this.repository.nickname(userId), userId, administrator: this.isAdmin(userId), unlimited: await this.permissions.enabled(userId) }; }
+  async kitchens(userId, after) {
+    const page = await this.repository.list(userId, after);
+    const counts = await this.repository.pendingCounts(page.items.filter(item => item.owner).map(item => item.id));
+    return { items: page.items.map(item => ({ ...item, pendingCount: item.owner ? counts.get(item.id) || 0 : 0 })), next: page.next };
+  }
   async create(userId, input) {
     if (typeof input.name !== 'string' || !input.name.trim() || input.name.trim().length > 40 || ![0, 1].includes(input.role)) throw new KitchenError('请填写1到40个字符的厨房名称并选择身份');
     // 白名单免除每日配额，但仍防止短时间大量创建请求。
@@ -73,7 +78,11 @@ class AccountService {
     const space = await this.repository.findPhrase(this.sessions.kitchenId(input.passphrase));
     if (!space) throw new KitchenError('口令不正确或暂时无法申请加入');
     if (await this.repository.member(userId, space.id)) return { joined: true };
-    await this.repository.requestJoin(userId, space.id); return { pending: true };
+    // 旧版客户端可以暂时不传称呼；新版填写的称呼只用于辨认，不当作微信身份。
+    const nickname = input.nickname === undefined ? await this.repository.nickname(userId) : input.nickname;
+    if (typeof nickname !== 'string' || nickname.trim().length > 20 || (input.nickname !== undefined && !nickname.trim()) || /[\u0000-\u001f\u007f]/.test(nickname)) throw new KitchenError('请填写1到20个字符的称呼');
+    await this.repository.requestJoin(userId, space.id, nickname.trim());
+    await this.repository.saveNickname(userId, nickname.trim()); return { pending: true };
   }
   async owner(userId, id) {
     if (!validId(id)) throw new KitchenError('厨房编号不正确');

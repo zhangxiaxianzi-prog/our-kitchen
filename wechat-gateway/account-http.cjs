@@ -23,7 +23,7 @@ function accountHttp(accounts, origin, readBody) {
     }
     if (!route.startsWith('/api/account/') && !route.startsWith('/api/admin/')) return false;
     const methods = {
-      '/api/account/login': 'POST', '/api/account/profile': 'GET', '/api/account/kitchens': 'GET', '/api/account/create': 'POST', '/api/account/enter': 'POST', '/api/account/join': 'POST', '/api/account/requests': 'GET', '/api/account/decide': 'POST', '/api/account/invitation': 'POST', '/api/account/admin-approve': 'POST',
+      '/api/account/login': 'POST', '/api/account/profile': 'GET', '/api/account/kitchens': 'GET', '/api/account/create': 'POST', '/api/account/enter': 'POST', '/api/account/join': 'POST', '/api/account/requests': 'GET', '/api/account/applications': 'GET', '/api/account/decide': 'POST', '/api/account/invitation': 'POST', '/api/account/admin-approve': 'POST',
       '/api/admin/login': 'POST', '/api/admin/poll': 'GET', '/api/admin/session': 'GET', '/api/admin/logout': 'POST', '/api/admin/whitelist': 'GET', '/api/admin/save': 'POST', '/api/admin/audit': 'GET'
     };
     if (!methods[route]) throw new KitchenError('没有这个账号接口', 404);
@@ -45,7 +45,8 @@ function accountHttp(accounts, origin, readBody) {
       const userId = accounts.requireAccount(request.headers.authorization);
       switch (route) {
         case '/api/account/profile': reply(await accounts.profile(userId)); break;
-        case '/api/account/kitchens': reply(await accounts.repository.list(userId, after)); break;
+        case '/api/account/kitchens': reply(await accounts.kitchens(userId, after)); break;
+        case '/api/account/applications': reply(await accounts.repository.applications(userId, after)); break;
         case '/api/account/create': reply(await accounts.create(userId, input)); break;
         case '/api/account/enter': reply(await accounts.enter(userId, input)); break;
         case '/api/account/join': reply(await accounts.join(userId, input)); break;

@@ -14,8 +14,37 @@ class AccountRepository {
       `CREATE TABLE IF NOT EXISTS kitchen_admin_logins (id VARCHAR(43) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY, browser_hash CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL, scan_hash CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL, status VARCHAR(12) NOT NULL DEFAULT 'pending', user_id VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NULL, expires BIGINT UNSIGNED NOT NULL, KEY expiry_lookup (expires)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`
     ];
     for (const sql of tables) await this.execute(sql);
+    // 旧厨房也保留申请记录；多个实例同时升级时，另一个实例已加好的字段不用再加。
+    const upgrades = [
+      { table: 'kitchen_accounts', column: 'nickname', sql: "ALTER TABLE kitchen_accounts ADD COLUMN nickname VARCHAR(20) NOT NULL DEFAULT ''" },
+      { table: 'kitchen_join_requests', column: 'nickname', sql: "ALTER TABLE kitchen_join_requests ADD COLUMN nickname VARCHAR(20) NOT NULL DEFAULT ''" },
+      { table: 'kitchen_join_requests', index: 'applicant_lookup', sql: 'ALTER TABLE kitchen_join_requests ADD INDEX applicant_lookup (user_id,kitchen_id)' },
+      { table: 'kitchen_join_requests', index: 'pending_lookup', sql: 'ALTER TABLE kitchen_join_requests ADD INDEX pending_lookup (kitchen_id,status,user_id)' }
+    ];
+    for (const upgrade of upgrades) {
+      // 正常重启只查是否已升级，不反复执行改表，减少对业务请求的影响。
+      const found = upgrade.column
+        ? await this.execute('SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?', [upgrade.table, upgrade.column])
+        : await this.execute('SELECT INDEX_NAME FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ? LIMIT 1', [upgrade.table, upgrade.index]);
+      if (found.length) continue;
+      try { await this.execute(upgrade.sql); }
+      catch (error) { if (!['ER_DUP_FIELDNAME', 'ER_DUP_KEYNAME'].includes(error.code)) throw error; }
+    }
   }
   async ensureUser(userId) { await this.execute('INSERT INTO kitchen_accounts (user_id) VALUES (?) ON DUPLICATE KEY UPDATE user_id = user_id', [userId]); }
+  async nickname(userId) { const rows = await this.execute('SELECT nickname FROM kitchen_accounts WHERE user_id = ?', [userId]); return rows[0]?.nickname || ''; }
+  async saveNickname(userId, nickname) { await this.execute('UPDATE kitchen_accounts SET nickname = ? WHERE user_id = ?', [nickname, userId]); }
+  // 一次只返回一页申请，不把别人的申请或厨房内容交给申请人。
+  async applications(userId, after) {
+    const rows = await this.execute('SELECT kitchen_id AS id, status, nickname, created_at AS createdAt FROM kitchen_join_requests WHERE user_id = ? AND kitchen_id > ? ORDER BY kitchen_id LIMIT 21', [userId, after]);
+    return { items: rows.slice(0, 20), next: rows.length > 20 ? rows[19].id : null };
+  }
+  // 只查当前页里本人创建的厨房，用一次分组查询显示数量，不逐个请求数据库。
+  async pendingCounts(ids) {
+    if (!ids.length) return new Map();
+    const rows = await this.execute('SELECT kitchen_id AS id, COUNT(*) AS total FROM kitchen_join_requests WHERE status = ? AND kitchen_id IN (' + ids.map(() => '?').join(',') + ') GROUP BY kitchen_id', ['pending', ...ids]);
+    return new Map(rows.map(row => [row.id, Number(row.total)]));
+  }
   async whitelist(userId) { const rows = await this.execute('SELECT enabled FROM kitchen_whitelist WHERE user_id = ?', [userId]); return rows[0]?.enabled === 1; }
   async member(userId, id) { const rows = await this.execute('SELECT name, is_owner FROM kitchen_members WHERE user_id = ? AND kitchen_id = ?', [userId, id]); return rows[0]; }
   async space(id) { const rows = await this.execute('SELECT id, owner_id, name FROM kitchen_spaces WHERE id = ?', [id]); return rows[0]; }
@@ -40,8 +69,8 @@ class AccountRepository {
     } catch (error) { await connection.rollback(); throw error; } finally { connection.release(); }
   }
   async touch(userId, id) { await this.execute('UPDATE kitchen_members SET last_visit = CURRENT_TIMESTAMP WHERE user_id = ? AND kitchen_id = ?', [userId, id]); }
-  async requestJoin(userId, id) { await this.execute("INSERT INTO kitchen_join_requests (kitchen_id,user_id) VALUES (?,?) ON DUPLICATE KEY UPDATE status = IF(status = 'approved', status, 'pending'), created_at = CURRENT_TIMESTAMP", [id, userId]); }
-  async requests(id, after) { const rows = await this.execute("SELECT user_id AS userId, created_at AS createdAt FROM kitchen_join_requests WHERE kitchen_id = ? AND status = 'pending' AND user_id > ? ORDER BY user_id LIMIT 21", [id, after]); return { items: rows.slice(0, 20), next: rows.length > 20 ? rows[19].userId : null }; }
+  async requestJoin(userId, id, nickname) { await this.execute("INSERT INTO kitchen_join_requests (kitchen_id,user_id,nickname) VALUES (?,?,?) ON DUPLICATE KEY UPDATE nickname = VALUES(nickname), status = IF(status = 'approved', status, 'pending'), created_at = CURRENT_TIMESTAMP", [id, userId, nickname]); }
+  async requests(id, after) { const rows = await this.execute("SELECT user_id AS userId, nickname, created_at AS createdAt FROM kitchen_join_requests WHERE kitchen_id = ? AND status = 'pending' AND user_id > ? ORDER BY user_id LIMIT 21", [id, after]); return { items: rows.slice(0, 20), next: rows.length > 20 ? rows[19].userId : null }; }
   // 审批与成员登记同时保存；同一申请只允许处理一次。
   async decide(id, userId, approved, name) {
     const connection = await this.kitchens.pool.getConnection();

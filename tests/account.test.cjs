@@ -15,6 +15,9 @@ class Accounts {
   users = new Map(); spaces = new Map(); members = new Map(); phrases = new Map(); permissions = new Map(); pending = new Map(); logins = new Map(); states = new Map(); rates = new Map();
   kitchens = { allowLogin: async (id, bucket, max) => { const n = (this.rates.get(id) || 0) + 1; this.rates.set(id, n); return n <= max; }, ready: async () => {}, read: async id => this.states.get(id) };
   async ensureUser(user) { if (!this.users.has(user)) this.users.set(user, { count: 0, daily: 0, day: '' }); }
+  async nickname(user) { return this.users.get(user)?.nickname || ''; }
+  async saveNickname(user, name) { this.users.get(user).nickname = name; }
+  async pendingCounts() { return new Map(); }
   async whitelist(user) { return !!this.permissions.get(user); }
   async member(user, id) { return this.members.get(user + ':' + id); }
   async space(id) { return this.spaces.get(id); }
@@ -153,4 +156,39 @@ test('微信登录诊断区分网络、超时、解析和拒绝，日志不泄�
   }
   const logs = []; assert.equal(await new WechatIdentity('test-app', 'secret-value', async () => ({ ok: true, json: async () => ({ openid: owner }) }), (...args) => logs.push(args)).exchange('login-code'), owner);
   assert.equal(logs.length, 0);
+});
+// 只在假仓库里走申请状态，不使用真实微信账号或生产数据库。
+test('申请称呼随账号保存，拒绝后可主动重申；无效口令不更新称呼或创建厨房', async () => {
+  const { service, repo } = setup(); await service.login({ code: 'owner-code' }); await service.login({ code: 'guest-code' });
+  const applications = new Map();
+  repo.requestJoin = async (user, id, nickname) => applications.set(user + ':' + id, { id, user, nickname, status: 'pending' });
+  repo.applications = async user => ({ items: Array.from(applications.values()).filter(x => x.user === user), next: null });
+  repo.decide = async (id, user, approved, name) => { const item = applications.get(user + ':' + id); assert.equal(item.status, 'pending'); item.status = approved ? 'approved' : 'rejected'; if (approved) repo.members.set(user + ':' + id, { name }); };
+  repo.pendingCounts = async ids => new Map(ids.map(id => [id, Array.from(applications.values()).filter(x => x.id === id && x.status === 'pending').length]));
+  const created = await service.create(owner, { name: '测试厨房', role: 0 });
+  await service.join(guest, { passphrase: created.invitation, nickname: ' 小张 ' });
+  assert.equal((await service.profile(guest)).nickname, '小张'); assert.equal((await service.kitchens(owner, '')).items[0].pendingCount, 1);
+  assert.equal((await repo.applications(stranger)).items.length, 0);
+  await assert.rejects(service.enter(guest, { id: created.id, role: 1 }), e => e.status === 403);
+  await service.decide(owner, { id: created.id, userId: guest, approved: false });
+  assert.equal((await repo.applications(guest)).items[0].status, 'rejected');
+  await service.join(guest, { passphrase: created.invitation, nickname: '张同学' });
+  assert.equal((await repo.applications(guest)).items[0].status, 'pending'); assert.equal(applications.size, 1);
+  await service.decide(owner, { id: created.id, userId: guest, approved: true });
+  assert.equal((await repo.applications(guest)).items[0].status, 'approved'); assert.equal((await service.kitchens(owner, '')).items[0].pendingCount, 0);
+  await assert.rejects(service.join(stranger, { passphrase: randomId(), nickname: '错误口令' }));
+  assert.equal(repo.spaces.size, 1); assert.equal(await repo.nickname(stranger), '');
+  await assert.rejects(service.join(stranger, { passphrase: created.invitation, nickname: '   ' }), /称呼/);
+});
+test('申请字段升级已完成不重复改表，另一个实例先完成可继续，其他升级错误必须停止', async () => {
+  const statements = []; let existing = true; let errorCode = 'ER_DUP_FIELDNAME';
+  const repository = new AccountRepository({ execute: async sql => {
+    statements.push(sql);
+    if (sql.startsWith('SELECT')) return existing ? [{}] : [];
+    if (sql.startsWith('ALTER')) throw Object.assign(new Error('离线模拟升级错误'), { code: sql.includes('INDEX') ? 'ER_DUP_KEYNAME' : errorCode });
+    return [];
+  } });
+  await repository.initialize(); assert(!statements.some(x => x.startsWith('ALTER')));
+  existing = false; await repository.initialize(); assert(statements.some(x => x.startsWith('ALTER')));
+  errorCode = 'ER_TABLEACCESS_DENIED_ERROR'; await assert.rejects(repository.initialize(), e => e.code === errorCode);
 });

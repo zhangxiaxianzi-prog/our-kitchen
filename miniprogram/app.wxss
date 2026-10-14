@@ -237,3 +237,46 @@ textarea { height:180rpx; min-height:80px; line-height:1.6; }
 .account-id { display: block; overflow-wrap: anywhere; font-size: 24rpx; margin-bottom: 12rpx; }
 .account-tools { justify-content: space-between; flex-wrap: wrap; }
 .login .card input { margin-bottom: 16rpx; }
+
+/* 选择厨房先展示可进入的列表，账号工具和创建表单按需打开。样式只作用于入口页。 */
+.login-page { background:#f2f5f1; min-height:100vh; }
+.kitchen-gate { padding:12rpx 4rpx 24rpx; }
+.kitchen-gate .gate-header { display:flex; align-items:center; justify-content:space-between; gap:16rpx; margin-bottom:32rpx; }
+.kitchen-gate .gate-brand { display:block; font-size:25rpx; color:#65715e; margin-bottom:8rpx; }
+.kitchen-gate .gate-title { display:block; font-size:44rpx; font-weight:600; line-height:1.3; }
+.kitchen-gate .gate-account { background:#fff; border:1rpx solid #dce3d9; padding:8rpx 20rpx; flex-shrink:0; }
+.kitchen-gate .gate-rolebar { display:flex; justify-content:space-between; align-items:center; gap:16rpx; color:#65715e; font-size:27rpx; margin-bottom:24rpx; }
+.kitchen-gate .gate-roles { display:flex; padding:4rpx; background:#e4eae1; border-radius:16rpx; gap:4rpx; }
+.kitchen-gate .gate-roles .role { border:0; min-width:108rpx; padding:8rpx 16rpx; background:transparent; }
+.kitchen-gate .gate-roles .chosen { background:#fff!important; color:#28382d!important; }
+.kitchen-gate .gate-listhead { display:flex; justify-content:space-between; align-items:center; font-size:27rpx; color:#65715e; margin-bottom:8rpx; }
+.kitchen-gate .gate-list { background:#fff; border-radius:24rpx; overflow:hidden; border:1rpx solid #dce3d9; }
+.kitchen-gate .gate-kitchen { padding:24rpx; border-bottom:1rpx solid #e4eae1; }
+.kitchen-gate .gate-kitchen:last-child { border-bottom:0; }
+.kitchen-gate .gate-kitchen-main { display:flex; align-items:center; gap:20rpx; }
+.kitchen-gate .gate-kitchen-info { flex:1; min-width:0; }
+.kitchen-gate .gate-kitchen-name { display:block; font-size:34rpx; font-weight:600; line-height:1.4; overflow-wrap:anywhere; }
+.kitchen-gate .gate-kitchen-meta { display:block; color:#65715e; font-size:24rpx; line-height:1.5; margin-top:8rpx; }
+.kitchen-gate .gate-enter { flex-shrink:0; padding:16rpx 20rpx; font-size:27rpx; border-radius:14rpx; }
+.kitchen-gate .gate-kitchen-footer { display:flex; justify-content:flex-end; margin-top:12rpx; }
+.kitchen-gate .gate-kitchen-footer .link { padding:8rpx 0 0 16rpx; font-size:25rpx; }
+.kitchen-gate .gate-actions { display:flex; gap:16rpx; margin:24rpx 0 12rpx; }
+.kitchen-gate .gate-actions .secondary { flex:1; padding:20rpx 8rpx; background:#fff; border-color:#dce3d9; }
+.kitchen-gate .gate-panel { background:#fff; border:1rpx solid #dce3d9; border-radius:20rpx; padding:24rpx; margin-top:20rpx; }
+.kitchen-gate .gate-form input { margin:20rpx 0 12rpx; background:#f2f5f1; }
+.kitchen-gate .gate-form-note { display:block; font-size:25rpx; line-height:1.5; color:#65715e; margin:12rpx 0 20rpx; }
+.kitchen-gate .gate-form .full { margin-top:16rpx; }
+.kitchen-gate .gate-empty { padding:36rpx 24rpx; border:1rpx dashed #bac7b6; border-radius:20rpx; }
+.kitchen-gate .gate-empty .description { margin-bottom:0; }
+.kitchen-gate .gate-pagination { justify-content:flex-end; margin-top:16rpx; }
+.kitchen-gate .gate-signin { margin-top:64rpx; }
+@media (max-width:360px) { .kitchen-gate .gate-kitchen { padding:20rpx; } .kitchen-gate .gate-kitchen-main { gap:12rpx; } .kitchen-gate .gate-enter { padding:14rpx 16rpx; } .kitchen-gate .gate-kitchen-name { font-size:32rpx; } }
+
+/* 申请状态和本轮结果直接显示，不依赖一闪而过的提示。 */
+.application-row { display:flex; align-items:center; justify-content:space-between; gap:16rpx; padding:20rpx 0; border-bottom:1rpx solid #e4eae1; }
+.application-row > view { min-width:0; flex:1; }
+.application-name { display:block; font-size:29rpx; line-height:1.5; }
+.application-row .small { display:block; margin-top:6rpx; }
+.summary-names { display:flex; flex-wrap:wrap; gap:12rpx; margin:20rpx 0; }
+.summary-names text { background:#e8eee3; color:#28382d; padding:10rpx 16rpx; border-radius:12rpx; }
+.meal-summary .full { margin-top:16rpx; }
